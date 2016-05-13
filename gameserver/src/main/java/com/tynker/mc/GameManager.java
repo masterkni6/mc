@@ -15,6 +15,7 @@ public class GameManager extends JavaPlugin implements Listener{
     private int gameDimension;
     private int playersNum;
     private List<Player> playerlist = new ArrayList<Player>();
+    private List<int> lotlist = new ArrayList<int>();
 
  
     @Override
@@ -27,12 +28,12 @@ public class GameManager extends JavaPlugin implements Listener{
         getServer().getScheduler().cancelTasks(this);
     }
     
-    public void launchGame(List<Player> players, int logNumber){
+    public void launchGame(List<Player> players, int lotNumber){
 
     }   
 
    public int getFreeLot(){
-
+	
 	return 0;
     }
  
