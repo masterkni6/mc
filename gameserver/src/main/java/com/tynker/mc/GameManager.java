@@ -12,6 +12,7 @@ import java.lang.Integer;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.bukkit.Bukkit;
 
 
 public class GameManager extends JavaPlugin implements Listener{
@@ -24,6 +25,21 @@ public class GameManager extends JavaPlugin implements Listener{
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
+        Bukkit.getScheduler().runTaskTimer(this, new Runnable(){
+            @Override
+            public void run(){
+                if(playerList.size() > playersNum-1){
+			        int lotNum = getFreeLot();
+			        lotList.add(lotNum, playerList);
+                    List<Player> currentPlayers = playerList.subList(0,playersNum-1);
+                    for(Player player: currentPlayers){
+                        player.setCustomName(Integer.toString(lotNum));
+                    }
+			        launchGame(currentPlayers, lotNum);
+	                playerList = playerList.subList(playersNum, playerList.size());
+	            }
+            }
+        }, 0, (long)(1000 / 50)); 
     }
 
     @Override
@@ -40,6 +56,10 @@ public class GameManager extends JavaPlugin implements Listener{
     public void endGame(List<Player> players, int lotNumber){
         System.out.println("Did not implement endGame in your game!");
     }   
+
+    public void endGame(int lotNumber){
+
+    }
 
     public int getFreeLot(){
         List<Player> playerList;
