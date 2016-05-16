@@ -5,6 +5,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.Listener;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import java.lang.Integer;
 import org.bukkit.block.Block;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +17,6 @@ public class GameManager extends JavaPlugin implements Listener{
     private int playersPerLot;
     private List<Player> playerList = new ArrayList<Player>();
     private List<List<Player>> lotList = new ArrayList<List<Player>>();
-
 
     @Override
     public void onEnable() {
@@ -44,9 +44,22 @@ public class GameManager extends JavaPlugin implements Listener{
         return lotList.size()-1;
     }
 
+    Bukkit.getScheduler().runTaskTimer(this, new Runnable(){
+        @Override
+        public void run(){
+            if(playerList.size() > playersNum-1){
+			    int lotNum = getFreeLot();
+			    lotList.add(lotNum, playerList);
+			    launchGame(playerList.subList(0,playersNum-1), lotNum);
+	            playerList = new Array;
+	        }
+        }
+    }, 0l, (long)(1 * 1000 / 50)); 
+
     @EventHandler
     public void PlayerJoin(PlayerJoinEvent event) {
-        playerList.add(event.getPlayer());
+	    synchronized(this){
+		    playerList.add(event.getPlayer());
+        }   
     }
-    
 }
