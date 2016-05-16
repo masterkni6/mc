@@ -15,10 +15,10 @@ import org.bukkit.Bukkit;
 public class GameManager extends JavaPlugin implements Listener{
    
     private int gameDimension;
-    private int playersNum;
+    private int playersPerLot;
     private List<Player> playerList = new ArrayList<Player>();
     private List<List<Player>> lotList = new ArrayList<List<Player>>();
- 
+
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
@@ -38,14 +38,14 @@ public class GameManager extends JavaPlugin implements Listener{
             }
         }, 0, (long)(1000 / 50)); 
     }
-    
+
     @Override
     public void onDisable() {
         getServer().getScheduler().cancelTasks(this);
     }
-    
-    public void launchGame(List<Player> players, int lotNumber){
 
+    //to be inherited by real games
+    public void launchGame(List<Player> players, int lotNumber){
     }   
 
     public void endGame(int lotNumber){
@@ -53,8 +53,15 @@ public class GameManager extends JavaPlugin implements Listener{
     }
 
     public int getFreeLot(){
-	
-	return 0;
+        List<Player> playerList;
+        for(int i = 0; i < lotList.size(); i++){
+            playerList = lotList[i];
+            if(!playerList.size()){
+                return i;
+            } 
+        }
+        lotList.add(new ArrayList<Player>);
+        return lotList.size()-1;
     }
 
     @EventHandler
