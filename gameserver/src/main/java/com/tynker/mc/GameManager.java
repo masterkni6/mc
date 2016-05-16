@@ -9,6 +9,7 @@ import java.lang.Integer;
 import org.bukkit.block.Block;
 import java.util.ArrayList;
 import java.util.List;
+import org.bukkit.Bukkit;
 
 
 public class GameManager extends JavaPlugin implements Listener{
@@ -21,6 +22,21 @@ public class GameManager extends JavaPlugin implements Listener{
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
+        Bukkit.getScheduler().runTaskTimer(this, new Runnable(){
+            @Override
+            public void run(){
+                if(playerList.size() > playersNum-1){
+			        int lotNum = getFreeLot();
+			        lotList.add(lotNum, playerList);
+                    List<Player> currentPlayers = playerList.subList(0,playersNum-1);
+                    for(Player player: currentPlayers){
+                        player.setCustomName(Integer.toString(lotNum));
+                    }
+			        launchGame(currentPlayers, lotNum);
+	                playerList = playerList.subList(playersNum, playerList.size());
+	            }
+            }
+        }, 0, (long)(1000 / 50)); 
     }
     
     @Override
@@ -32,22 +48,14 @@ public class GameManager extends JavaPlugin implements Listener{
 
     }   
 
+    public void endGame(int lotNumber){
+
+    }
+
     public int getFreeLot(){
 	
 	return 0;
     }
-
-    Bukkit.getScheduler().runTaskTimer(this, new Runnable(){
-        @Override
-        public void run(){
-            if(playerList.size() > playersNum-1){
-			    int lotNum = getFreeLot();
-			    lotList.add(lotNum, playerList);
-			    launchGame(playerList.subList(0,playersNum-1), lotNum);
-	            playerList = new Array;
-	        }
-        }
-    }, 0l, (long)(1 * 1000 / 50)); 
 
     @EventHandler
     public void PlayerJoin(PlayerJoinEvent event) {
