@@ -4,9 +4,12 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.Listener;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
-import java.lang.Integer;
+import org.bukkit.Location;
 import org.bukkit.block.Block;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.lang.Integer;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,33 +31,27 @@ public class GameManager extends JavaPlugin implements Listener{
         getServer().getScheduler().cancelTasks(this);
     }
 
-    //to be inherited by real games
+    //to be overwritten by real games
     public void launchGame(List<Player> players, int lotNumber){
+        System.out.println("Did not implement launchGame in your game!");
+    }   
+
+    //to be overwritten by real games
+    public void endGame(List<Player> players, int lotNumber){
+        System.out.println("Did not implement endGame in your game!");
     }   
 
     public int getFreeLot(){
         List<Player> playerList;
         for(int i = 0; i < lotList.size(); i++){
-            playerList = lotList[i];
-            if(!playerList.size()){
+            playerList = lotList.get(i);
+            if(playerList.size() == 0){
                 return i;
             } 
         }
-        lotList.add(new ArrayList<Player>);
+        lotList.add(new ArrayList<Player>());
         return lotList.size()-1;
     }
-
-    Bukkit.getScheduler().runTaskTimer(this, new Runnable(){
-        @Override
-        public void run(){
-            if(playerList.size() > playersNum-1){
-			    int lotNum = getFreeLot();
-			    lotList.add(lotNum, playerList);
-			    launchGame(playerList.subList(0,playersNum-1), lotNum);
-	            playerList = new Array;
-	        }
-        }
-    }, 0l, (long)(1 * 1000 / 50)); 
 
     @EventHandler
     public void PlayerJoin(PlayerJoinEvent event) {
