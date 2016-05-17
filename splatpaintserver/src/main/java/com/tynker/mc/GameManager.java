@@ -4,9 +4,14 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.World;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerEggThrowEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.Listener;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -20,8 +25,7 @@ import org.bukkit.Bukkit;
 
 public class GameManager extends JavaPlugin implements Listener{
    
-    private int gameDimension = 50;
-    private int playersPerLot = 2;
+    private int playersPerLot = 1;
     private List<Player> playerList;
     private List<List<Player>> lotList;
     private World world;
@@ -29,14 +33,10 @@ public class GameManager extends JavaPlugin implements Listener{
     @Override
     public void onEnable() {
         world = Bukkit.getWorlds().get(0);
-        //System.out.println(gameDimension);
         playerList = new ArrayList<Player>();
         lotList = new ArrayList<List<Player>>();
-        //lotList.add(new List<PLayer>());
         getServer().getPluginManager().registerEvents(this, this);
         buildRoom(24,0,125,0);
-        //world.setSpawnLocation(0,126,0);
-        //System.out.println(world.getSpawnLocation());
         final org.bukkit.plugin.Plugin thisPlugin = this;
         Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
             @Override
@@ -92,31 +92,45 @@ public class GameManager extends JavaPlugin implements Listener{
         getServer().getScheduler().cancelTasks(this);
     }
 
-    //to be overwritten by real games
     public void launchGame(List<Player> players, int lotNumber){
         System.out.println(players + " are joining lot " + lotNumber);
+        final Location origin = new Location(world, lotNumber*50 , 100 , 0);
+        final List<Player> currentPlayers = players; 
+        buildStageAt(origin);
+        Bukkit.getScheduler().runTaskLater(this, new Runnable(){
+            @Override
+            public void run(){
+                Boolean temp = true;
+                for(Player player: currentPlayers){
+                    player.teleport(origin.add(0,1,0));
+                    player.getInventory().addItem(new org.bukkit.inventory.ItemStack((temp)?org.bukkit.Material.EGG:org.bukkit.Material.SNOW_BALL)); 
+                    temp = !temp;
+                }
+            }
+        },(long)(5000 / 50));
     }   
 
-    //to be overwritten by real games
-    public void endGame(List<Player> players, int lotNumber){
-        System.out.println("Did not implement endGame in your game!");
-    }   
+    public void buildStageAt(Location origin){
+        Block block = world.getBlockAt(origin.add(-15,0,-15));
+        for(int i = 0; i < 30; i++){
+            for(int j = 0; j < 30;j++){
+                block.getRelative(i,0,j).setType(org.bukkit.Material.SNOW_BLOCK);
+            }
+        }
+    }
 
     public void endGame(int lotNumber){
         lotList.set(lotNumber, null);
     }
 
     public int getFreeLot(){
-        //List<Player> playerList;
         int i;
         for(i = 0; i < lotList.size(); i++){
-            //playerList = lotList.get(i);
             if(lotList.get(i) == null){
                 return i;
             } 
         }
-        //lotList.add(new ArrayList<Player>());
-        return i;//lotList.size()-1;
+        return i;
     }
 
     @EventHandler
@@ -126,7 +140,14 @@ public class GameManager extends JavaPlugin implements Listener{
 		    playerList.add(player);
         }   
         player.setCustomName(null);
+        player.getInventory().clear();
+        player.setGameMode(org.bukkit.GameMode.SURVIVAL);
         player.teleport(world.getBlockAt(0,126,0).getLocation());
+    }
+
+    @EventHandler
+    public void PlayerRespawn(PlayerRespawnEvent event) {
+        event.setRespawnLocation(world.getBlockAt(Integer.parseInt(event.getPlayer().getCustomName())*50,101,0).getLocation());
     }
 
     @EventHandler
@@ -136,12 +157,52 @@ public class GameManager extends JavaPlugin implements Listener{
         if(playerCN == null){
             playerList.remove(player);
         }
-        //lotList.set(Integer.parseInt(player.getCustomName()), null);
-        //lotList.add(0,new ArrayList<PLayer>());
     }
 
     @EventHandler
     public void BlockBreak(BlockBreakEvent event) {
 		    event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void PlayerEggThrow(PlayerEggThrowEvent event) {
+		    event.setHatching(false);
+    }
+
+    @EventHandler
+    public void PlayerDeath(PlayerDeathEvent event) {
+		    event.setKeepInventory(true);
+    }
+
+    @EventHandler
+    public void ProjectileHit(ProjectileHitEvent event){
+        Projectile projectile = event.getEntity();
+        Player player = (Player)projectile.getShooter();
+        if(player.getCustomName() != null){
+            if(projectile instanceof org.bukkit.entity.Snowball){
+                paint(org.bukkit.DyeColor.BLUE, world.getBlockAt(projectile.getLocation()), 2);
+                player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.SNOW_BALL)); 
+            }else if(projectile instanceof org.bukkit.entity.Egg){
+                paint(org.bukkit.DyeColor.ORANGE, world.getBlockAt(projectile.getLocation()), 2);
+                player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.EGG)); 
+            }
+        }
+    }
+
+    public void paint(org.bukkit.DyeColor color, Block block, int size){
+        Block t_block;
+        for (int x = (0 - size); x < size; x ++) {
+            for (int y = (0 - size); y < size; y ++) {
+                for (int z = (0 - size); z < size; z ++) {
+                    t_block = block.getRelative(x,y,z);
+                    if(!t_block.isEmpty() && !t_block.isLiquid()){
+                        t_block.setType(org.bukkit.Material.WOOL);
+                        org.bukkit.block.BlockState b_state = t_block.getState();
+                        ((org.bukkit.material.Wool)b_state.getData()).setColor(color);
+                        b_state.update();
+                    }                
+                }
+            }        
+        }
     }
 }
