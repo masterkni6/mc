@@ -1,47 +1,22 @@
 package com.tynker.mc;
 
-import org.bukkit.event.block.BlockBreakEvent;
-
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.FoodLevelChangeEvent;
-import org.bukkit.event.entity.PlayerDeathEvent;
-
-import org.bukkit.event.player.PlayerCommandPreprocessEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
-
-import org.bukkit.block.Block;
-
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
-
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-
-import org.bukkit.plugin.java.JavaPlugin;
-
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
-
-import org.bukkit.material.Wool;
-
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.DyeColor;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
-
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Iterator;
-import java.util.Random;
 import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
 
+import org.bukkit.*;
+import org.bukkit.event.*;
+import org.bukkit.event.block.*;
+import org.bukkit.event.entity.*;
+import org.bukkit.event.player.*;
+import org.bukkit.block.*;
+import org.bukkit.boss.*;
+import org.bukkit.entity.*;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.*;
+import org.bukkit.material.*;
 
 
 public class GameManager extends JavaPlugin implements Listener{
@@ -54,16 +29,21 @@ public class GameManager extends JavaPlugin implements Listener{
 
     private World gameWorld;
 
+    private BossBar bb; 
+
     private List<Player> playerList = Collections.synchronizedList(new ArrayList<Player>());
     private List<List<Player>> lotList = Collections.synchronizedList(new ArrayList<List<Player>>());
 
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
-        
+        bb = getServer().createBossBar("Next to play: No one",BarColor.BLUE,BarStyle.SOLID, BarFlag.CREATE_FOG);
+        bb.setProgress(0);
+        bb.setVisible(true);
         startLotLoc = new Location(getServer().getWorlds().get(0),0,100,0);
         startHubLoc = new Location(getServer().getWorlds().get(0),0,200,0);
         gameWorld = getServer().getWorlds().get(0);   
+        gameWorld.setStorm(false);
 
         Bukkit.getScheduler().runTaskLater(this, new Runnable(){
             @Override
@@ -75,7 +55,7 @@ public class GameManager extends JavaPlugin implements Listener{
                         e.remove();
                     }
                 }
-                gameWorld.spawnEntity(startHubLoc.clone().add(10,2,10), EntityType.ENDER_CRYSTAL);
+                gameWorld.spawnEntity(startHubLoc.clone().add(10,2,10),EntityType.ENDER_CRYSTAL);
             }
         },1);
 
@@ -89,27 +69,27 @@ public class GameManager extends JavaPlugin implements Listener{
                 gameWorld.setTime(1000);
 
 	            synchronized(playerList){
-                    if(playerList.size() > playersPerLot-1){
+                    if(playerList.size() >= playersPerLot){
                         int lotNum = getFreeLot();
                         List<Player> currentPlayers = new ArrayList<Player>(playerList.subList(0,playersPerLot));
 	                    synchronized(lotList){
                             if(lotList.size() <= lotNum){
+                                buildLot(lotNum);
                                 lotList.add(currentPlayers);
                             }
                             else{
                                 lotList.set(lotNum,currentPlayers);
                             }
                         }
-                        for(Player player: currentPlayers){
-                            player.setCustomName(Integer.toString(lotNum));
-                        }
                         launchGame(currentPlayers, lotNum);
                         playerList = new ArrayList<Player>(playerList.subList(playersPerLot,playerList.size()));
+                        updateWaitingBar();
                     }
                 }
                 Bukkit.getScheduler().runTaskLater(self, this,(long)(1000/50));
             }
-        }, (long)(5)*(1000 / 50)); 
+        }, (long)(5)*(1000 / 50));
+
     }
 
     @Override
@@ -119,6 +99,7 @@ public class GameManager extends JavaPlugin implements Listener{
 
     @EventHandler
     public void PlayerJoin(PlayerJoinEvent event) {
+        bb.addPlayer(event.getPlayer());
         sendToWaitingRoom(event.getPlayer());
     }
 
@@ -223,10 +204,24 @@ public class GameManager extends JavaPlugin implements Listener{
         if(message[0].equals("/set")){
             if(message[1].equals("playersPerLot")){
                 playersPerLot = Integer.parseInt(message[2]);
-            }else if(message[1].equals("setLot")){
-                List<Player> players = new ArrayList<Player>();
-                players.add(p);
-                launchGame(players, Integer.parseInt(message[2]));
+            }else if(message[1].equals("lot")){
+                synchronized(lotList){
+                    List<Player> players = new ArrayList<Player>();
+                    players.add(p);
+                    int lotNumber = Integer.parseInt(message[2]);
+                    if(lotNumber == lotList.size()){
+                        lotList.add(players);
+                    }else if(lotNumber > lotList.size()){
+                        for(int i = 0; i <= lotNumber; i++){
+                            lotList.add(null);
+                        }
+                        lotList.set(lotNumber,players);
+                    }else{
+                        lotList.set(lotNumber,players);
+                    }
+                    buildLot(lotNumber);
+                    launchGame(players,lotNumber);
+                }
             }
             
         }
@@ -251,9 +246,10 @@ public class GameManager extends JavaPlugin implements Listener{
     }
 
     void launchGame(List<Player> players, int lotNumber){
-        buildLot(lotNumber);
         Random rand = new Random();
-
+        for(Player player: players){
+            player.setCustomName(Integer.toString(lotNumber));
+        }
         for(Player p : players){
             p.getInventory().clear();
             p.getInventory().addItem(new org.bukkit.inventory.ItemStack(Material.DIAMOND_SPADE));
@@ -266,6 +262,7 @@ public class GameManager extends JavaPlugin implements Listener{
     }   
 
     void clearLot(int lotNumber){
+        buildLot(lotNumber);
         lotList.set(lotNumber,null);
     }
 
@@ -342,8 +339,16 @@ public class GameManager extends JavaPlugin implements Listener{
         }
     }
 
+    void addPlayer(Player p){
+        synchronized(playerList){
+            playerList.add(p);
+            updateWaitingBar();
+        }
+    }
+
     void sendToWaitingRoom(Player p){
 		p.getInventory().clear();
+        p.setFoodLevel(100);
 		p.setGameMode(GameMode.SURVIVAL);
         p.setCustomName(null);
         p.teleport(startHubLoc.clone().add(5,1,5));
@@ -352,12 +357,26 @@ public class GameManager extends JavaPlugin implements Listener{
     void addToWaitingList(Player p){
         synchronized(playerList){
             if(playerList.contains(p)){
-                p.sendMessage(ChatColor.RED + "You have already been added. Please wait we find you a game.");
+                p.sendMessage(ChatColor.RED + "You have already been added. Please wait while we find you a game.");
             }else{
-                playerList.add(p);
+                addPlayer(p);
                 p.sendMessage(ChatColor.GREEN + "You have been added to the waiting list.");
             }
         }
+    }
+
+    void updateWaitingBar(){
+        bb.setProgress(playerList.size()/(float)playersPerLot);
+        String playerbar = "Next to play: ";
+        List<Player> pView = playerList.subList(0,Math.min(6,playerList.size()));
+        if(pView.size() > 0){
+            playerbar += pView.get(0).getName();
+
+            for(int i = 1; i < pView.size(); i++){
+                playerbar += ", " + pView.get(i).getName();
+            }
+        }
+        bb.setTitle(playerbar);
     }
 
     void broadcast(String message){
@@ -365,7 +384,6 @@ public class GameManager extends JavaPlugin implements Listener{
             //if(p.hasPermission("permission.node")){
                 p.sendMessage(message);
             //}
- 
         }
     }
 
