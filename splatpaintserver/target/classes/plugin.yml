@@ -1,5 +1,5 @@
-name: test
-main: com.tynker.mc.test
+name: GameManager
+main: com.tynker.mc.GameManager
 version: 1.0
 author: Tynker
 commands:
