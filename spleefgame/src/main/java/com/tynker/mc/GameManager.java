@@ -14,7 +14,7 @@ import org.bukkit.event.player.*;
 import org.bukkit.block.*;
 import org.bukkit.boss.*;
 import org.bukkit.entity.*;
-import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.plugin.java.*;
 import org.bukkit.potion.*;
 import org.bukkit.material.*;
 
@@ -76,8 +76,7 @@ public class GameManager extends JavaPlugin implements Listener{
                             if(lotList.size() <= lotNum){
                                 buildLot(lotNum);
                                 lotList.add(currentPlayers);
-                            }
-                            else{
+                            }else{
                                 lotList.set(lotNum,currentPlayers);
                             }
                         }
@@ -381,9 +380,7 @@ public class GameManager extends JavaPlugin implements Listener{
 
     void broadcast(String message){
         for(Player p : Bukkit.getOnlinePlayers()){
-            //if(p.hasPermission("permission.node")){
-                p.sendMessage(message);
-            //}
+            p.sendMessage(message);
         }
     }
 
