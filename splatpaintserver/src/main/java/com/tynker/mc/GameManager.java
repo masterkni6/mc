@@ -34,18 +34,13 @@ import org.bukkit.Bukkit;
 
 public class GameManager extends JavaPlugin implements Listener{
    
-    //private int stageDimension = 30;
     private int gameTimer = 10;
-    //private int stageDistance = 50;
-    private int playersPerLot = 1;
+    private int playersPerLot = 2;
     private List<Player> waitingList;
     private Boolean[] worldList;
     private List<BossBar> promoList;
-    //private World world;
     private BossBar lobbyBar;
-    //private List<Player> currentPlayers;
-    //private int lotNumber;
-    //private World new_world;
+    private WorldCreator[] worldCreators;
 
     @Override
     public void onEnable() {
@@ -55,19 +50,20 @@ public class GameManager extends JavaPlugin implements Listener{
         //setting up lobby wrold
         World world = Bukkit.getWorld("world");
         world.setSpawnFlags(false,false);
-        world.setSpawnLocation(10,126,0);
+        world.setPVP(false);
         buildRoom(24, world.getBlockAt(0,125,0).getLocation());
 
         //setting up world list
-        worldList = new Boolean[10];
+        worldList = new Boolean[3];
         Arrays.fill(worldList, false);
-        for(int i = 0;i < 10;i++){
-            WorldCreator worldCreator = new WorldCreator("world"+i);//.environment(Environment.NORMAL).generateStructures(false).seed(0).generator(new WorldChunkGenerator());
-            Bukkit.createWorld(worldCreator);
+        worldCreators = new WorldCreator[worldList.length];
+        for(int i = 0;i < worldList.length;i++){
+            worldCreators[i] = new WorldCreator("world"+i);
+            Bukkit.createWorld(worldCreators[i]);
         } 
 
         //setting up lobby promo message
-        lobbyBar = Bukkit.getServer().createBossBar("Waiting for other players.", org.bukkit.boss.BarColor.PURPLE, org.bukkit.boss.BarStyle.SEGMENTED_6);
+        lobbyBar = Bukkit.getServer().createBossBar("Please wait for game to start.", org.bukkit.boss.BarColor.PURPLE, org.bukkit.boss.BarStyle.SEGMENTED_6);
         lobbyBar.setProgress(0.0);
 
         //setting up interval for launching game
@@ -77,24 +73,28 @@ public class GameManager extends JavaPlugin implements Listener{
             public void run(){
                 if(waitingList.size() >= playersPerLot){
                     int lotNumber = getFreeLot();
+                    World targetWorld;
                     if(lotNumber >= 0){
                         while(waitingList.size() >= playersPerLot && lotNumber >= 0){
                             synchronized(worldList){
                                 worldList[lotNumber] = true;
                             }
-                            World targetWorld = Bukkit.getWorld("world"+lotNumber);
+                            targetWorld = Bukkit.getWorld("world"+lotNumber);
+                            System.out.println("launching game in "+ lotNumber + " " + targetWorld);
                             synchronized(waitingList){
                                 for(int c = 0;c < playersPerLot;c++){
-                                    waitingList.remove(0).teleport(targetWorld.getBlockAt(0,201,0).getLocation());
+                                    waitingList.remove(0).teleport(targetWorld.getHighestBlockAt(0,0).getLocation());
                                 }
                             }
                             launchGame(lotNumber);
                             lotNumber = getFreeLot();
                         }
                         lobbyBar.removeAll();
-                        lobbyBar.setProgress((double)waitingList.size()/playersPerLot);
-                        for(Player player: waitingList){
-                            lobbyBar.addPlayer(player);
+                        synchronized(waitingList){
+                            lobbyBar.setProgress((double)waitingList.size()/playersPerLot);
+                            for(Player player: waitingList){
+                                lobbyBar.addPlayer(player);
+                            }
                         }
                     }
                 }
@@ -102,25 +102,6 @@ public class GameManager extends JavaPlugin implements Listener{
             }
         }, (long)(1000 / 50)); 
     }
-
-    //public void selectNewCurrentPlayers(){
-    //    int i;
-    //    for(i = 0; i < lotList.size(); i++){
-    //            if(lotList.get(i) == null){
-    //            lotNumber = i;
-    //        } 
-    //    }
-    //    return i;
-    //   lotNumber = getFreeLot();
-    //    currentPlayers = new ArrayList<Player>();
-    //    synchronized(lotList){
-    //        if(lotList.size() <= lotNumber){
-    //            lotList.add();
-    //        }else{
-    //            lotList.set(lotNumber,currentPlayers);
-    //        }
-    //    }
-    //}
 
     public void buildRoom(int d, Location location){
         World world = location.getWorld();
@@ -154,16 +135,16 @@ public class GameManager extends JavaPlugin implements Listener{
     }
 
     public void launchGame(int lotNumber){
-        final List<Player> thisPlayers = Bukkit.getWorld("world"+lotNumber).getPlayers();
         final int thisLotNumber = lotNumber;
         final org.bukkit.plugin.Plugin thisPlugin = this;
         Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
             @Override
             public void run(){
                 Boolean temp = true;
-                for(Player player: thisPlayers){
+                for(Player player: Bukkit.getWorld("world"+thisLotNumber).getPlayers()){
                     player.setHealth(player.getMaxHealth());
                     player.getInventory().addItem(new org.bukkit.inventory.ItemStack((temp)?org.bukkit.Material.EGG:org.bukkit.Material.SNOW_BALL)); 
+                    player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_SWORD)); 
                     temp = !temp;
                 }
                 Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
@@ -176,40 +157,45 @@ public class GameManager extends JavaPlugin implements Listener{
         },(long)(5000 / 50));
     }   
 
-    //public void buildStageAt(Location origin){
-    //    Block block = world.getBlockAt(origin.add(Math.round(-stageDimension/2),0,Math.round(-stageDimension/2)));
-    //    for(int i = 0; i < stageDimension; i++){
-    //        for(int j = 0; j < stageDimension;j++){
-    //            block.getRelative(i,0,j).setType(org.bukkit.Material.SNOW_BLOCK);
-    //        }
-    //    }
-    //}
-//       @EventHandler
+    //       @EventHandler
 //    public void PlayerCommand(PlayerCommandPreprocessEvent
 // event) {
 //        if(event.getMessage().equals("/buy")){
 //        event.getPlayer().teleport(Bukkit.getWorld("world").getBlockAt(0,200,0).getLocation());
 //        Bukkit.unloadWorld("new_world", false);
-//        WorldCreator nw = new WorldCreator("new_world");//.environment(Environment.NORMAL).generateStructures(false).seed(0).generator(new WorldChunkGenerator());
+//        WorldCreator nw = new WorldCreator("new_world").environment(Environment.NORMAL).generateStructures(false).seed(0);//.generator(new WorldChunkGenerator());
 //        Bukkit.createWorld(nw);
 //        event.getPlayer().teleport(Bukkit.getWorld("new_world").getBlockAt(0,200,0).getLocation());
 //    }
 //}
 
     public void endGame(int lotNumber){
-        String worldName = "world"+lotNumber;
-        for(Player player: Bukkit.getWorld(worldName).getPlayers()){
-            player.getInventory().clear();
-            //player.setCustomName(null);
-            player.setHealth(player.getMaxHealth());
-            player.teleport(Bukkit.getWorld("world").getBlockAt(0,201,0).getLocation());
-        }
-        Bukkit.unloadWorld(worldName, false);
-        WorldCreator wc = new WorldCreator(worldName);//.environment(Environment.NORMAL).generateStructures(false).seed(0).generator(new WorldChunkGenerator());
-        Bukkit.createWorld(wc);
-        synchronized(worldList){
-            worldList[lotNumber] = false;
-        }
+        final int thisLotNumber = lotNumber;
+        final World thisWorld = Bukkit.getWorld("world"+lotNumber);
+        final List<Player> players = thisWorld.getPlayers();        
+        final org.bukkit.plugin.Plugin thisPlugin = this;
+        players.forEach(player->player.setCustomName(null));
+        Bukkit.getScheduler().runTaskLater(this, new Runnable(){
+            @Override
+            public void run(){
+                players.forEach(player->{
+                    player.getInventory().clear();
+                    player.setHealth(player.getMaxHealth());
+                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                    player.teleport(Bukkit.getWorld("world").getBlockAt(0,126,-5).getLocation());
+                });
+                //Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
+                //    @Override
+                //    public void run(){
+                        Bukkit.unloadWorld(thisWorld, false);
+                        Bukkit.createWorld(worldCreators[thisLotNumber]);
+                        synchronized(worldList){
+                            worldList[thisLotNumber] = false;
+                        }                   
+                //    }
+                //}, (long)(1000/50));
+            }
+        }, (long)(5000/50));
     }
 
     public int getFreeLot(){
@@ -221,50 +207,26 @@ public class GameManager extends JavaPlugin implements Listener{
                 } 
             }
         }
-    }
-        //lotList.add(new ArrayList<Player>());
         return -1;
     }
 
     @EventHandler
     public void PlayerJoin(PlayerJoinEvent event) {
 	    Player player = event.getPlayer();
-        //player.setCustomName(null);
+        player.setCustomName(null);
         player.getInventory().clear();
         player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-        //player.teleport(Bukkit.getWorld("lobby").getBlockAt(0,201,0).getLocation());
+        player.teleport(Bukkit.getWorld("world").getBlockAt(0,126,-5).getLocation());
     }
 
-    //@EventHandler
-    //public void PlayerDeath(PlayerDeathEvent event) {
-    //    event.setKeepInventory(true);
-    //    Player player = event.getEntity();
-    //    player.setHealth(player.getMaxHealth());
-    //    player.setGameMode(org.bukkit.GameMode.SPECTATOR);
-    //    player.teleport(player.getLocation().add(0,50,0));
-    //    Bukkit.getScheduler().runTaskLater(this, new Runnable(){
-    //        @Override
-    //        public void run(){
-    //            player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-    //            String customName = player.getCustomName();
-    //            if(customName == null){
-    //                player.teleport(world.getBlockAt(0,201,0).getLocation());
-    //            }else{
-    //                player.teleport(world.getBlockAt(Integer.parseInt(customName)*50,101,0).getLocation());
-    //            }
-    //        }
-    //    },(long)(5000 / 50));
-    //}
-
-    //@EventHandler
-    //public void PlayerRespawn(PlayerRespawnEvent event) {
-    //    Player player = event.getPlayer();
-    //    if(player.getCustomName() == null){
-    //        event.setRespawnLocation(world.getBlockAt(0,126,0).getLocation());
-    //    }else{
-    //        event.setRespawnLocation(world.getBlockAt(Integer.parseInt(event.getPlayer().getCustomName())*50,101,0).getLocation());
-    //    }
-    //}
+    @EventHandler
+    public void PlayerDeath(PlayerDeathEvent event) {
+        event.setKeepInventory(true);
+        Player player = event.getEntity();
+        player.setHealth(player.getMaxHealth());
+        player.setGameMode(org.bukkit.GameMode.SPECTATOR);
+        player.teleport(player.getLocation().add(0,50,0));
+    }
 
     //@EventHandler
     //public void PlayerQuit(PlayerQuitEvent event) {
@@ -293,55 +255,34 @@ public class GameManager extends JavaPlugin implements Listener{
         event.setHatching(false);
     }
 
-    //@EventHandler
-    //public void PlayerDeath(PlayerDeathEvent event) {
-    //    event.setKeepInventory(true);
-    //}
-
-    //@EventHandler
-    //public void PlayerInteractAtEntity(PlayerInteractAtEntityEvent event) {
-    //    if(event.getEntity() instanceof org.bukkit.entity.EnderCrystal){
-	//	    Player player = (Player)event.getDamager();
-    //        if(player.getCustomName() == null){
-    //            synchronized(currentPlayers){
-    //                if(currentPlayers.size() < playersPerLot){
-    //                    currentPlayers.add(player);
-    //                    lobbyBar.addPlayer(player);
-    //                    lobbyBar.setProgress(lobbyBar.getProgress()+(1.0/playersPerLot));    
-    //                }else{
-    //                    synchronized(waitingList){
-    //                        waitingList.add(player);
-    //                    }
-    //                }        
-    //            }
-    //        }
-    //    }    
-    //}
-
     @EventHandler
     public void EntityDamageEntity(EntityDamageByEntityEvent event) {
         if(event.getEntity() instanceof org.bukkit.entity.EnderCrystal){
 		    Player player = (Player)event.getDamager();
             if(player.getCustomName() == null){
+                player.setCustomName("waiting");
+                lobbyBar.addPlayer(player);
                 synchronized(waitingList){
-                        waitingList.add(player);
-                        lobbyBar.addPlayer(player);
-                        lobbyBar.setProgress(lobbyBar.getProgress()+(1.0/playersPerLot));    
-                    }        
-                }
-            event.setCancelled(true);
+                    waitingList.add(player);
+                    if(waitingList.size() <= playersPerLot)lobbyBar.setProgress((double)waitingList.size()/playersPerLot);    
+                }        
             }
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler
     public void ProjectileHit(ProjectileHitEvent event){
         Projectile projectile = event.getEntity();
-        if(projectile instanceof org.bukkit.entity.Snowball){
-            paint(org.bukkit.DyeColor.BLUE, projectile.getWorld().getBlockAt(projectile.getLocation()), 2);
-            ((Player)projectile.getShooter()).getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.SNOW_BALL)); 
-        }else if(projectile instanceof org.bukkit.entity.Egg){
-            paint(org.bukkit.DyeColor.ORANGE, projectile.getWorld().getBlockAt(projectile.getLocation()), 2);
-            ((Player)projectile.getShooter()).getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.EGG)); 
+        Player player = (Player)projectile.getShooter();
+        if(player.getCustomName() != null){ 
+            if(projectile instanceof org.bukkit.entity.Snowball){
+                paint(org.bukkit.DyeColor.BLUE, projectile.getWorld().getBlockAt(projectile.getLocation()), 2);
+                player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.SNOW_BALL)); 
+            }else if(projectile instanceof org.bukkit.entity.Egg){
+                paint(org.bukkit.DyeColor.ORANGE, projectile.getWorld().getBlockAt(projectile.getLocation()), 2);
+                player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.EGG)); 
+            }
         }
     }
 
