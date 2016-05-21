@@ -8,10 +8,11 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerEggThrowEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
+//import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.player.PlayerInteractAtEntityEvent;
+//import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
@@ -22,11 +23,10 @@ import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.WorldCreator;
-import org.bukkit.World.Environment;
+//import org.bukkit.World.Environment;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import java.lang.Integer;
-
 import java.util.ArrayList;
 import java.util.List;
 import org.bukkit.Bukkit;
@@ -73,8 +73,9 @@ public class GameManager extends JavaPlugin implements Listener{
             public void run(){
                 if(waitingList.size() >= playersPerLot){
                     int lotNumber = getFreeLot();
-                    World targetWorld;
                     if(lotNumber >= 0){
+                        World targetWorld;
+                        Player player;
                         while(waitingList.size() >= playersPerLot && lotNumber >= 0){
                             synchronized(worldList){
                                 worldList[lotNumber] = true;
@@ -83,7 +84,9 @@ public class GameManager extends JavaPlugin implements Listener{
                             System.out.println("launching game in "+ lotNumber + " " + targetWorld);
                             synchronized(waitingList){
                                 for(int c = 0;c < playersPerLot;c++){
-                                    waitingList.remove(0).teleport(targetWorld.getHighestBlockAt(0,0).getLocation());
+                                    player = waitingList.remove(0);
+                                    player.setCustomName("gaming");
+                                    player.teleport(targetWorld.getHighestBlockAt(0,0).getLocation());
                                 }
                             }
                             launchGame(lotNumber);
@@ -92,9 +95,9 @@ public class GameManager extends JavaPlugin implements Listener{
                         lobbyBar.removeAll();
                         synchronized(waitingList){
                             lobbyBar.setProgress((double)waitingList.size()/playersPerLot);
-                            for(Player player: waitingList){
-                                lobbyBar.addPlayer(player);
-                            }
+                            waitingList.forEach(leftover->{
+                                lobbyBar.addPlayer(leftover);
+                            });
                         }
                     }
                 }
@@ -157,17 +160,16 @@ public class GameManager extends JavaPlugin implements Listener{
         },(long)(5000 / 50));
     }   
 
-    //       @EventHandler
-//    public void PlayerCommand(PlayerCommandPreprocessEvent
-// event) {
-//        if(event.getMessage().equals("/buy")){
-//        event.getPlayer().teleport(Bukkit.getWorld("world").getBlockAt(0,200,0).getLocation());
-//        Bukkit.unloadWorld("new_world", false);
-//        WorldCreator nw = new WorldCreator("new_world").environment(Environment.NORMAL).generateStructures(false).seed(0);//.generator(new WorldChunkGenerator());
-//        Bukkit.createWorld(nw);
-//        event.getPlayer().teleport(Bukkit.getWorld("new_world").getBlockAt(0,200,0).getLocation());
-//    }
-//}
+    //@EventHandler
+    //public void PlayerCommand(PlayerCommandPreprocessEvent event) {
+    //        if(event.getMessage().equals("/buy")){
+    //        event.getPlayer().teleport(Bukkit.getWorld("world").getBlockAt(0,200,0).getLocation());
+    //        Bukkit.unloadWorld("new_world", false);
+    //        WorldCreator nw = new WorldCreator("new_world").environment(Environment.NORMAL).generateStructures(false).seed(0);//.generator(new WorldChunkGenerator());
+    //        Bukkit.createWorld(nw);
+    //        event.getPlayer().teleport(Bukkit.getWorld("new_world").getBlockAt(0,200,0).getLocation());
+    //    }
+    //}
 
     public void endGame(int lotNumber){
         final int thisLotNumber = lotNumber;
@@ -220,6 +222,11 @@ public class GameManager extends JavaPlugin implements Listener{
     }
 
     @EventHandler
+    public void FoodLevelChange(FoodLevelChangeEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
     public void PlayerDeath(PlayerDeathEvent event) {
         event.setKeepInventory(true);
         Player player = event.getEntity();
@@ -228,22 +235,16 @@ public class GameManager extends JavaPlugin implements Listener{
         player.teleport(player.getLocation().add(0,50,0));
     }
 
-    //@EventHandler
-    //public void PlayerQuit(PlayerQuitEvent event) {
-	//    Player player = event.getPlayer();
-    //    String playerCN = player.getCustomName();
-    //    if(playerCN == null){
-    //        //try{
-    //            waitingList.remove(player);
-    //        //}
-    //        //catch()
-    //    }else{
-    //        List<Player> players = lotList.get(Integer.parseInt(playerCN));
-    //        synchronized(players){
-    //            players.remove(player);    
-    //        }
-    //    }
-    //}
+    @EventHandler
+    public void PlayerQuit(PlayerQuitEvent event) {
+	    Player player = event.getPlayer();
+        System.out.println(player+" quited");
+        if("waiting".equals(player.getCustomName())){
+            synchronized(waitingList){
+                waitingList.remove(player);
+            }
+        }
+    }
 
     @EventHandler
     public void BlockBreak(BlockBreakEvent event) {
