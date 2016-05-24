@@ -39,7 +39,7 @@ public class GameManager extends JavaPlugin implements Listener{
     private BossBar[] barList;
     private BossBar lobbyBar;
     private WorldCreator[] worldCreators;
-    //private Game[] games;
+    private int borderSize = 40;
 
     @Override
     public void onEnable() {
@@ -77,13 +77,13 @@ public class GameManager extends JavaPlugin implements Listener{
         waitingList = new ArrayList<Player>();
         WorldBorder thisWorldBorder;
         for(int i = 0;i < worldList.length;i++){
-            worldCreators[i] = new WorldCreator("world"+i);
+            worldCreators[i] = new WorldCreator("world"+i);//.generatorSettings("{\"seaLevel\":0}");
             thisWorldBorder = Bukkit.createWorld(worldCreators[i]).getWorldBorder();
             thisWorldBorder.setCenter(0,0);
-            thisWorldBorder.setSize(50);
+            thisWorldBorder.setSize(borderSize);
             Bukkit.unloadWorld("world"+i,true);
             Bukkit.createWorld(worldCreators[i]);
-            barList[i] = Bukkit.getServer().createBossBar("Counting down: 5.", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SOLID);
+            barList[i] = Bukkit.getServer().createBossBar("Get Ready!", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SOLID);
         }
 
         //setting up interval for launching game
@@ -186,41 +186,47 @@ public class GameManager extends JavaPlugin implements Listener{
         Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
             @Override
             public void run(){
-                thisBar.setTitle("Counting down: 4.");
+                thisBar.setTitle("Counting down: 5.");
                 Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
                     @Override
                     public void run(){
-                        thisBar.setTitle("Counting down: 3.");
+                        thisBar.setTitle("Counting down: 4.");
                         Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
                             @Override
                             public void run(){
-                                thisBar.setTitle("Counting down: 2.");
+                                thisBar.setTitle("Counting down: 3.");
                                 Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
                                     @Override
                                     public void run(){
-                                        thisBar.setTitle("Counting down: 1.");
+                                        thisBar.setTitle("Counting down: 2.");
                                         Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
                                             @Override
                                             public void run(){
-                                                thisBar.setTitle("Start!");
-                                                Boolean temp = true;
-
-                                                for(Player player: Bukkit.getWorld("world"+thisLotNumber).getPlayers()){
-                                                    player.setHealth(player.getMaxHealth());
-                                                    player.getInventory().addItem(new org.bukkit.inventory.ItemStack((temp)?org.bukkit.Material.EGG:org.bukkit.Material.SNOW_BALL)); 
-                                                    player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_SWORD)); 
-                                                    temp = !temp;
-                                                }
-
+                                                thisBar.setTitle("Counting down: 1.");
                                                 Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
                                                     @Override
                                                     public void run(){
-                                                        thisBar.setTitle("Game Over");
-                                                        endGame(thisLotNumber);
+                                                        thisBar.setTitle("Start!");
+                                                        Boolean temp = true;
+
+                                                        for(Player player: Bukkit.getWorld("world"+thisLotNumber).getPlayers()){
+                                                            player.setHealth(player.getMaxHealth());
+                                                            player.getInventory().addItem(new org.bukkit.inventory.ItemStack((temp)?org.bukkit.Material.EGG:org.bukkit.Material.SNOW_BALL)); 
+                                                            player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_SWORD)); 
+                                                            temp = !temp;
+                                                        }
+
+                                                        Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
+                                                            @Override
+                                                            public void run(){
+                                                                //thisBar.setTitle("Game Over");
+                                                                endGame(thisLotNumber);
+                                                            }
+                                                        }, (long)(gameTimer*1000/50));
                                                     }
-                                                }, (long)(gameTimer*1000/50));
+                                                },(long)(1000 / 50));
                                             }
-                                        },(long)(1000 / 50));
+                                        }, (long)(1000/50));
                                     }
                                 }, (long)(1000/50));
                             }
@@ -228,7 +234,7 @@ public class GameManager extends JavaPlugin implements Listener{
                     }
                 }, (long)(1000/50));
             }
-        }, (long)(1000/50));
+        }, (long)(10000/50));
     }   
 
     //@EventHandler
@@ -249,13 +255,14 @@ public class GameManager extends JavaPlugin implements Listener{
         final org.bukkit.plugin.Plugin thisPlugin = this;
 
         players.forEach(player->player.setCustomName(null));
+        calculateScore(lotNumber);
 
         Bukkit.getScheduler().runTaskLater(this, new Runnable(){
             @Override
             public void run(){
                 BossBar thisBar = barList[lotNumber];
                 thisBar.removeAll();
-                thisBar.setTitle("Counting down: 5.");
+                thisBar.setTitle("Get Ready!");
 
                 players.forEach(player->{
                     player.getInventory().clear();
@@ -268,16 +275,14 @@ public class GameManager extends JavaPlugin implements Listener{
                 //    @Override
                 //    public void run(){
                         Bukkit.unloadWorld(thisWorld, false);
-                        WorldBorder thisWorldBorder = Bukkit.createWorld(worldCreators[thisLotNumber]).getWorldBorder();
-                        //thisWorldBorder.setCenter(0,0);
-                        //thisWorldBorder.setSize(50);
+                        Bukkit.createWorld(worldCreators[thisLotNumber]);
                         synchronized(worldList){
                             worldList[thisLotNumber] = false;
                         }                   
                 //    }
                 //}, (long)(1000/50));
             }
-        }, (long)(5000/50));
+        }, (long)(10000/50));
     }
 
     public int getFreeLot(){
@@ -394,5 +399,38 @@ public class GameManager extends JavaPlugin implements Listener{
                 }
             }        
         }
+    }
+    
+    public void calculateScore(int lotNumber){
+        World world = Bukkit.getWorld("world"+lotNumber);
+        int halfBorder = borderSize/2;
+        int seaLevel = world.getSeaLevel();
+        Block block;
+        int redScore = 0;
+        int blueScore = 0;
+        for(int x = -halfBorder;x < halfBorder;x++){
+            for(int z = -halfBorder;z < halfBorder;z++){
+                for(int y = seaLevel;y < seaLevel+50;y++){
+                    block = world.getBlockAt(x,y,z);
+                    if(block.getType() == org.bukkit.Material.WOOL){
+                        org.bukkit.DyeColor color = ((org.bukkit.material.Wool)block.getState().getData()).getColor();
+                        if(color == org.bukkit.DyeColor.BLUE){
+                            blueScore++;
+                        } else if(color == org.bukkit.DyeColor.ORANGE){
+                            redScore++;
+                        };
+                    }
+                }
+            }
+        }
+        String endMessage = "Orange Team Score : " + redScore + ". Blue Team Score : " + blueScore + ". ";    
+        if(redScore == blueScore){
+            endMessage = endMessage + "Tied Game.";
+        } else if(redScore > blueScore){
+            endMessage = endMessage + "Orange Team Won.";
+        } else {
+            endMessage = endMessage + "Blue Team Won.";
+        }
+        barList[lotNumber].setTitle(endMessage);    
     }
 }
