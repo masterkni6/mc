@@ -34,7 +34,7 @@ public class GameManager extends JavaPlugin implements Listener{
     private BossBar[] barList;
 
     private World lobbyWorld;
-
+    private JavaPlugin self;
     private BossBar bb; 
 
     private List<Player> waitingList = Collections.synchronizedList(new ArrayList<Player>());
@@ -43,6 +43,8 @@ public class GameManager extends JavaPlugin implements Listener{
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
+        self = this; 
+
         bb = getServer().createBossBar("Next to play:",BarColor.BLUE,BarStyle.SOLID, BarFlag.CREATE_FOG);
         bb.setProgress(0);
         bb.setVisible(true);
@@ -82,7 +84,6 @@ public class GameManager extends JavaPlugin implements Listener{
         }
 
 
-        final JavaPlugin self = this; 
         Bukkit.getScheduler().runTaskLater(this, new Runnable(){
             @Override
             public void run(){
@@ -100,7 +101,6 @@ public class GameManager extends JavaPlugin implements Listener{
 	                    synchronized(lotList){
                             if(lotList.size() <= lotNumber){
                                 lotList.add(targetWorld);
-                                buildLot(lotNumber);
                             }else{
                                 lotList.set(lotNumber,targetWorld);
                             }
@@ -114,6 +114,7 @@ public class GameManager extends JavaPlugin implements Listener{
                             //thisBar.addPlayer(player); 
                         }
                         
+                        buildLot(lotNumber);
                         launchGame(currentPlayers, lotNumber);
                         waitingList = new ArrayList<Player>(waitingList.subList(playersPerLot,waitingList.size()));
                         updateWaitingBar();
@@ -152,13 +153,17 @@ public class GameManager extends JavaPlugin implements Listener{
                 //    }
                 //}
                 sendToWaitingRoom(p);
+                int numAlive = 0;
                 List<Player> players = p.getWorld().getPlayers();
-                if(players.size() == 1){
+                for(Player player : players){
+                    if(!player.isDead()) numAlive++; 
+                }
+                if(numAlive == 1){
                     broadcast(players.get(0).getName() + " has won!");            
-                    endGame(Integer.parseInt(p.getCustomName()));
-                }else if (players.size() == 0){
+                    endGame(Integer.parseInt(p.getWorld().getName().split(GAME_WORLD_PREFIX)[1]));
+                }else if (numAlive == 0){
                     broadcast("There was a draw at lot!");            
-                    endGame(Integer.parseInt(p.getCustomName()));
+                    endGame(Integer.parseInt(p.getWorld().getName().split(GAME_WORLD_PREFIX)[1]));
                 }
             }
         }   
@@ -186,7 +191,7 @@ public class GameManager extends JavaPlugin implements Listener{
                     //    }
                     //}
                     List<Player> players = p.getWorld().getPlayers();
-                    if(players.size() == 0){
+                    if(players.size() == 1){
                         endGame(Integer.parseInt(p.getCustomName()));
                     }
                 }
@@ -203,7 +208,7 @@ public class GameManager extends JavaPlugin implements Listener{
             }else if(!b.getType().equals(Material.SNOW_BLOCK)){
                 if(b.getType().equals(Material.WOOL)){
                     if(DyeColor.RED.equals(getColor(b))){
-                        lobbyWorld.createExplosion(b.getLocation(),2.5f);
+                        p.getWorld().createExplosion(b.getLocation(),2.5f);
                     }else if(DyeColor.BLUE.equals(getColor(b))){
                         p.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY,20*5,255));
                     }else{
@@ -254,10 +259,10 @@ public class GameManager extends JavaPlugin implements Listener{
         Location loc2 = event.getTo().clone();
         if(!locEquals(loc1,loc2)){
             if (player.getCustomName() != null) {
-                Block blockBeneath = lobbyWorld.getBlockAt(loc2.add(0,-1,0));
+                Block blockBeneath = player.getWorld().getBlockAt(loc2.add(0,-1,0));
                 if (blockBeneath.getType().equals(Material.WOOL)){
                     if(DyeColor.RED.equals(getColor(blockBeneath))){
-                        lobbyWorld.createExplosion(loc2,2.5f);
+                        player.getWorld().createExplosion(loc2,2.5f);
                     }
                 }
             }
@@ -266,19 +271,49 @@ public class GameManager extends JavaPlugin implements Listener{
 
     void launchGame(List<Player> players, int lotNumber){
         Random rand = new Random();
+        final int ln = lotNumber;
         for(Player player: players){
             player.setCustomName(Integer.toString(lotNumber));
         }
+        final BossBar thisBar = barList[lotNumber];
         for(Player p : players){
             p.getInventory().clear();
             p.getInventory().addItem(new org.bukkit.inventory.ItemStack(Material.DIAMOND_SPADE));
-            p.setGameMode(GameMode.CREATIVE);
             p.teleport(new Location(lotList.get(lotNumber),rand.nextInt(25)+5,108,rand.nextInt(25)+5));
+            bb.removePlayer(p);
+            thisBar.addPlayer(p);
         }
+        Bukkit.getScheduler().runTaskLater(self, new Runnable(){
+            int time = 20;
+            @Override
+            public void run(){
+                if(time > 0){
+                    thisBar.setTitle("Counting down: " + Integer.toString(time));
+                    Bukkit.getScheduler().runTaskLater(self, this,(long)(1000/50));
+                }else if (time == 0){
+                    thisBar.setTitle("Start!");
+                    Bukkit.getScheduler().runTaskLater(self, this,(long)(1000/50));
+                }else{
+                    thisBar.removeAll();
+                }
+                time -= 1;
+            }
+        }, (long)(1000/50));
     }   
 
     void endGame(int lotNumber){
-        clearLot(lotNumber);
+        System.out.println("game ended");
+        final int ln = lotNumber;
+        Bukkit.getScheduler().runTaskLater(self, new Runnable(){
+            @Override
+            public void run(){
+                Bukkit.unloadWorld(lotList.get(ln), false);
+                Bukkit.createWorld(worldCreators[ln]).setSpawnFlags(false, false);
+                synchronized(lotList){
+                    clearLot(ln);
+                }                   
+            }
+        }, (long)(1000/50));
     }   
 
     void clearLot(int lotNumber){
@@ -292,7 +327,7 @@ public class GameManager extends JavaPlugin implements Listener{
         buildBlock(lotList.get(lotNumber),1,101,1,58,1,58,Material.LAVA);
 
         buildBlock(lotList.get(lotNumber),0,105,0,60,1,60,Material.SNOW_BLOCK);
-        //scatteredColoredBlocks(new Location(lobbyWorld,lotNumber*worldSize,105,0),60,30);
+        scatteredColoredBlocks(new Location(lotList.get(lotNumber),0,105,0),60,30);
         buildWalls(lotList.get(lotNumber),0,106,0,60,2,60,Material.IRON_FENCE);
     }
 
@@ -436,7 +471,7 @@ public class GameManager extends JavaPlugin implements Listener{
         Random rand = new Random();
         Block tBlock;
         for(int i = 0; i < amount; i++){
-            tBlock = lobbyWorld.getBlockAt(corner.clone().add(rand.nextInt(size-4)+2,0,rand.nextInt(size-4)+2));
+            tBlock = corner.getWorld().getBlockAt(corner.clone().add(rand.nextInt(size-4)+2,0,rand.nextInt(size-4)+2));
             if(rand.nextInt(2) == 0){
                 tBlock.setType(Material.WOOL);
                 setColor(tBlock,DyeColor.BLUE);
