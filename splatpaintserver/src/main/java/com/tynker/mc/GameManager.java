@@ -33,7 +33,7 @@ import org.bukkit.WorldBorder;
 public class GameManager extends JavaPlugin implements Listener{
    
     private int gameTimer = 10;
-    private int playersPerLot = 1;
+    private int playersPerLot = 2;
     private List<Player> waitingList;
     private Boolean[] worldList;
     private BossBar[] barList;
@@ -67,7 +67,7 @@ public class GameManager extends JavaPlugin implements Listener{
         worldCreators = new WorldCreator[worldList.length];
 
         //setting up lobby promo message
-        lobbyBar = Bukkit.getServer().createBossBar("Please wait for game to start.", org.bukkit.boss.BarColor.PURPLE, org.bukkit.boss.BarStyle.SEGMENTED_6);
+        lobbyBar = Bukkit.getServer().createBossBar("Please wait for game to start. Waiting for " + playersPerLot + "  more players.", org.bukkit.boss.BarColor.PURPLE, org.bukkit.boss.BarStyle.SEGMENTED_6);
         lobbyBar.setProgress(0.0);
 
         //setting up game message bar
@@ -76,13 +76,15 @@ public class GameManager extends JavaPlugin implements Listener{
         //initializing everything
         waitingList = new ArrayList<Player>();
         WorldBorder thisWorldBorder;
+        //World thisWorld;
         for(int i = 0;i < worldList.length;i++){
-            worldCreators[i] = new WorldCreator("world"+i);//.generatorSettings("{\"seaLevel\":0}");
+            worldCreators[i] = new WorldCreator("world"+i).type(org.bukkit.WorldType.FLAT).generateStructures(false).seed(0);//.generatorSettings("{\"seaLevel\":0}");
+            //thisWorld = Bukkit.createWorld(worldCreators[i]);
             thisWorldBorder = Bukkit.createWorld(worldCreators[i]).getWorldBorder();
             thisWorldBorder.setCenter(0,0);
             thisWorldBorder.setSize(borderSize);
             Bukkit.unloadWorld("world"+i,true);
-            Bukkit.createWorld(worldCreators[i]);
+            Bukkit.createWorld(worldCreators[i]).setSpawnFlags(false, false);
             barList[i] = Bukkit.getServer().createBossBar("Get Ready!", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SOLID);
         }
 
@@ -91,6 +93,10 @@ public class GameManager extends JavaPlugin implements Listener{
         Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
             @Override
             public void run(){
+
+                world.setTime(0);
+                world.setStorm(false);
+                world.setThundering(false);
 
                 if(waitingList.size() >= playersPerLot){
                     int lotNumber = getFreeLot();
@@ -108,8 +114,6 @@ public class GameManager extends JavaPlugin implements Listener{
                             }
                             targetWorld = Bukkit.getWorld("world"+lotNumber);
                             targetWorld.setTime(0);
-                            targetWorld.setStorm(false);
-                            targetWorld.setThundering(false);
                             thisBar = barList[lotNumber];
 
                             System.out.println("launching game in "+ lotNumber + " " + targetWorld);
@@ -271,16 +275,17 @@ public class GameManager extends JavaPlugin implements Listener{
                     player.teleport(Bukkit.getWorld("world").getBlockAt(0,126,-5).getLocation());
                 });
 
-                //Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
-                //    @Override
-                //    public void run(){
+                Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
+                    @Override
+                    public void run(){
                         Bukkit.unloadWorld(thisWorld, false);
-                        Bukkit.createWorld(worldCreators[thisLotNumber]);
+                        Bukkit.createWorld(worldCreators[thisLotNumber]).setSpawnFlags(false, false);
+                        //Bukkit.createWorld(new WorldCreator("world"+thisLotNumber));
                         synchronized(worldList){
                             worldList[thisLotNumber] = false;
                         }                   
-                //    }
-                //}, (long)(1000/50));
+                    }
+                }, (long)(1000/50));
             }
         }, (long)(10000/50));
     }
@@ -351,14 +356,21 @@ public class GameManager extends JavaPlugin implements Listener{
     public void EntityDamageEntity(EntityDamageByEntityEvent event) {
         if(event.getEntity() instanceof org.bukkit.entity.EnderCrystal){
 		    Player player = (Player)event.getDamager();
-
             if(player.getCustomName() == null){
                 player.setCustomName("waiting");
-                lobbyBar.addPlayer(player);
+                int size;
                 synchronized(waitingList){
                     waitingList.add(player);
-                    if(waitingList.size() <= playersPerLot)lobbyBar.setProgress((double)waitingList.size()/playersPerLot);    
-                }        
+                    size = waitingList.size();
+                    if(size <= playersPerLot){
+                        lobbyBar.addPlayer(player);
+                        lobbyBar.setProgress((double)size/playersPerLot);    
+                        player.sendMessage(org.bukkit.ChatColor.AQUA + "You have joined the game. ");
+                        lobbyBar.setTitle("Please wait for game to start. Waiting for " + (playersPerLot - size) + " more player(s).");    
+                    } else player.sendMessage(org.bukkit.ChatColor.AQUA + "You have joined the line. " + size + ((size>1)?" persons are":" person is") +  " currently waiting.");
+                }
+            } else {
+                player.sendMessage(org.bukkit.ChatColor.RED + "You are already in line.");
             }
 
             event.setCancelled(true);
@@ -410,7 +422,7 @@ public class GameManager extends JavaPlugin implements Listener{
         int blueScore = 0;
         for(int x = -halfBorder;x < halfBorder;x++){
             for(int z = -halfBorder;z < halfBorder;z++){
-                for(int y = seaLevel;y < seaLevel+50;y++){
+                for(int y = 0;y < 10;y++){
                     block = world.getBlockAt(x,y,z);
                     if(block.getType() == org.bukkit.Material.WOOL){
                         org.bukkit.DyeColor color = ((org.bukkit.material.Wool)block.getState().getData()).getColor();
