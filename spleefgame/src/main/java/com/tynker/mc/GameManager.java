@@ -20,68 +20,103 @@ import org.bukkit.material.*;
 
 
 public class GameManager extends JavaPlugin implements Listener{
-   
-    private int gameDimension = 200;
-    private int playersPerLot = 2;
+  
+    private int MAX_WORLDS_NUM = 3; 
+    private int worldSize = 200;
+    private int playersPerLot = 1;
+
+    private String GAME_WORLD_PREFIX = "world";
 
     private Location startLotLoc;
     private Location startHubLoc;
 
-    private World gameWorld;
+    private WorldCreator[] worldCreators;
+    private BossBar[] barList;
 
+    private World lobbyWorld;
+    private JavaPlugin self;
     private BossBar bb; 
 
-    private List<Player> playerList = Collections.synchronizedList(new ArrayList<Player>());
-    private List<List<Player>> lotList = Collections.synchronizedList(new ArrayList<List<Player>>());
+    private List<Player> waitingList = Collections.synchronizedList(new ArrayList<Player>());
+    private List<World> lotList = Collections.synchronizedList(new ArrayList<World>());
 
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
-        bb = getServer().createBossBar("Next to play: No one",BarColor.BLUE,BarStyle.SOLID, BarFlag.CREATE_FOG);
+        self = this; 
+
+        bb = getServer().createBossBar("Next to play:",BarColor.BLUE,BarStyle.SOLID, BarFlag.CREATE_FOG);
         bb.setProgress(0);
         bb.setVisible(true);
         startLotLoc = new Location(getServer().getWorlds().get(0),0,100,0);
         startHubLoc = new Location(getServer().getWorlds().get(0),0,200,0);
-        gameWorld = getServer().getWorlds().get(0);   
-        gameWorld.setStorm(false);
+        lobbyWorld = getServer().getWorlds().get(0);   
 
         Bukkit.getScheduler().runTaskLater(this, new Runnable(){
             @Override
             public void run(){
-                gameWorld.setSpawnFlags(false,false);
-                List<Entity> entities = gameWorld.getEntities();
+                lobbyWorld.setSpawnFlags(false,false);
+                List<Entity> entities = lobbyWorld.getEntities();
                 for(Entity e : entities){
                     if(!(e instanceof Player)){
                         e.remove();
                     }
                 }
-                gameWorld.spawnEntity(startHubLoc.clone().add(10,2,10),EntityType.ENDER_CRYSTAL);
+                lobbyWorld.spawnEntity(startHubLoc.clone().add(10,2,10),EntityType.ENDER_CRYSTAL);
             }
         },1);
 
         buildWaitingRoom(0,200,0,20,10,20);
 
-        final JavaPlugin self = this; 
+        worldCreators = new WorldCreator[MAX_WORLDS_NUM];
+        barList = new BossBar[MAX_WORLDS_NUM];
+
+        WorldBorder worldBorder;
+        //World world;
+        for(int i = 0;i < MAX_WORLDS_NUM;i++){
+            worldCreators[i] = new WorldCreator(GAME_WORLD_PREFIX+i).type(org.bukkit.WorldType.FLAT).generateStructures(false).seed(0);//.generatorSettings("{\"seaLevel\":0}");
+            worldBorder = Bukkit.createWorld(worldCreators[i]).getWorldBorder();
+            worldBorder.setCenter(0,0);
+            worldBorder.setSize(worldSize);
+            Bukkit.unloadWorld(GAME_WORLD_PREFIX+i,true);
+            Bukkit.createWorld(worldCreators[i]).setSpawnFlags(false, false);
+            barList[i] = Bukkit.getServer().createBossBar("Get Ready!", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SOLID);
+        }
+
+
         Bukkit.getScheduler().runTaskLater(this, new Runnable(){
             @Override
             public void run(){
 
-                gameWorld.setTime(1000);
+                lobbyWorld.setTime(1000);
+                lobbyWorld.setStorm(false);
+                lobbyWorld.setThundering(false);
 
-	            synchronized(playerList){
-                    if(playerList.size() >= playersPerLot){
-                        int lotNum = getFreeLot();
-                        List<Player> currentPlayers = new ArrayList<Player>(playerList.subList(0,playersPerLot));
+	            synchronized(waitingList){
+                    if(waitingList.size() >= playersPerLot){
+                        int lotNumber = getFreeLot();
+
+                        World targetWorld = Bukkit.getWorld(GAME_WORLD_PREFIX+lotNumber);
+                        List<Player> currentPlayers = new ArrayList<Player>(waitingList.subList(0,playersPerLot));
 	                    synchronized(lotList){
-                            if(lotList.size() <= lotNum){
-                                buildLot(lotNum);
-                                lotList.add(currentPlayers);
+                            if(lotList.size() <= lotNumber){
+                                lotList.add(targetWorld);
                             }else{
-                                lotList.set(lotNum,currentPlayers);
+                                lotList.set(lotNumber,targetWorld);
                             }
                         }
-                        launchGame(currentPlayers, lotNum);
-                        playerList = new ArrayList<Player>(playerList.subList(playersPerLot,playerList.size()));
+                        targetWorld.setTime(1000);
+                        BossBar thisBar = barList[lotNumber];
+
+                        for(Player p : currentPlayers){
+                            p.teleport(targetWorld.getSpawnLocation());
+                            p.setCustomName(Integer.toString(lotNumber));
+                            //thisBar.addPlayer(player); 
+                        }
+                        
+                        buildLot(lotNumber);
+                        launchGame(currentPlayers, lotNumber);
+                        waitingList = new ArrayList<Player>(waitingList.subList(playersPerLot,waitingList.size()));
                         updateWaitingBar();
                     }
                 }
@@ -109,20 +144,26 @@ public class GameManager extends JavaPlugin implements Listener{
             //removePlayer(p);
         }else{
             synchronized(lotList){
-                List<Player> players = lotList.get(Integer.parseInt(p.getCustomName()));
-                Iterator<Player> iter = players.iterator();
-                while (iter.hasNext()) {
-                    Player str = iter.next();
-                    if (str.getUniqueId() == p.getUniqueId()){
-                        iter.remove();
-                    }
+                //List<Player> players = lotList.get(Integer.parseInt(p.getCustomName()));
+                //Iterator<Player> iter = players.iterator();
+                //while (iter.hasNext()) {
+                //    Player str = iter.next();
+                //    if (str.getUniqueId() == p.getUniqueId()){
+                //        iter.remove();
+                //    }
+                //}
+                sendToWaitingRoom(p);
+                int numAlive = 0;
+                List<Player> players = p.getWorld().getPlayers();
+                for(Player player : players){
+                    if(!player.isDead()) numAlive++; 
                 }
-                if(players.size() == 1){
-                    broadcast(players.get(0).getName() + " has won at lot " + Integer.parseInt(p.getCustomName()) + "!");            
-                    endGame(Integer.parseInt(p.getCustomName()));
-                }else if (players.size() == 0){
-                    broadcast("There was a draw at lot " + Integer.parseInt(p.getCustomName()) + "!");            
-                    endGame(Integer.parseInt(p.getCustomName()));
+                if(numAlive == 1){
+                    broadcast(players.get(0).getName() + " has won!");            
+                    endGame(Integer.parseInt(p.getWorld().getName().split(GAME_WORLD_PREFIX)[1]));
+                }else if (numAlive == 0){
+                    broadcast("There was a draw at lot!");            
+                    endGame(Integer.parseInt(p.getWorld().getName().split(GAME_WORLD_PREFIX)[1]));
                 }
             }
         }   
@@ -141,15 +182,16 @@ public class GameManager extends JavaPlugin implements Listener{
                 removePlayer(p);
             }else{
 	            synchronized(lotList){
-                    List<Player> players = lotList.get(Integer.parseInt(p.getCustomName()));
-                    Iterator<Player> iter = players.iterator();
-                    while (iter.hasNext()) {
-                        Player str = iter.next();
-                        if (str.getUniqueId() == p.getUniqueId()){
-                            iter.remove();
-                        }
-                    }
-                    if(players.size() == 0){
+                    //List<Player> players = lotList.get(Integer.parseInt(p.getCustomName()));
+                    //Iterator<Player> iter = players.iterator();
+                    //while (iter.hasNext()) {
+                    //    Player str = iter.next();
+                    //    if (str.getUniqueId() == p.getUniqueId()){
+                    //        iter.remove();
+                    //    }
+                    //}
+                    List<Player> players = p.getWorld().getPlayers();
+                    if(players.size() == 1){
                         endGame(Integer.parseInt(p.getCustomName()));
                     }
                 }
@@ -166,7 +208,7 @@ public class GameManager extends JavaPlugin implements Listener{
             }else if(!b.getType().equals(Material.SNOW_BLOCK)){
                 if(b.getType().equals(Material.WOOL)){
                     if(DyeColor.RED.equals(getColor(b))){
-                        gameWorld.createExplosion(b.getLocation(),2.5f);
+                        p.getWorld().createExplosion(b.getLocation(),2.5f);
                     }else if(DyeColor.BLUE.equals(getColor(b))){
                         p.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY,20*5,255));
                     }else{
@@ -204,23 +246,6 @@ public class GameManager extends JavaPlugin implements Listener{
             if(message[1].equals("playersPerLot")){
                 playersPerLot = Integer.parseInt(message[2]);
             }else if(message[1].equals("lot")){
-                synchronized(lotList){
-                    List<Player> players = new ArrayList<Player>();
-                    players.add(p);
-                    int lotNumber = Integer.parseInt(message[2]);
-                    if(lotNumber == lotList.size()){
-                        lotList.add(players);
-                    }else if(lotNumber > lotList.size()){
-                        for(int i = 0; i <= lotNumber; i++){
-                            lotList.add(null);
-                        }
-                        lotList.set(lotNumber,players);
-                    }else{
-                        lotList.set(lotNumber,players);
-                    }
-                    buildLot(lotNumber);
-                    launchGame(players,lotNumber);
-                }
             }
             
         }
@@ -234,10 +259,10 @@ public class GameManager extends JavaPlugin implements Listener{
         Location loc2 = event.getTo().clone();
         if(!locEquals(loc1,loc2)){
             if (player.getCustomName() != null) {
-                Block blockBeneath = gameWorld.getBlockAt(loc2.add(0,-1,0));
+                Block blockBeneath = player.getWorld().getBlockAt(loc2.add(0,-1,0));
                 if (blockBeneath.getType().equals(Material.WOOL)){
                     if(DyeColor.RED.equals(getColor(blockBeneath))){
-                        gameWorld.createExplosion(loc2,2.5f);
+                        player.getWorld().createExplosion(loc2,2.5f);
                     }
                 }
             }
@@ -246,18 +271,49 @@ public class GameManager extends JavaPlugin implements Listener{
 
     void launchGame(List<Player> players, int lotNumber){
         Random rand = new Random();
+        final int ln = lotNumber;
         for(Player player: players){
             player.setCustomName(Integer.toString(lotNumber));
         }
+        final BossBar thisBar = barList[lotNumber];
         for(Player p : players){
             p.getInventory().clear();
             p.getInventory().addItem(new org.bukkit.inventory.ItemStack(Material.DIAMOND_SPADE));
-            p.teleport(new Location(gameWorld,lotNumber*gameDimension+rand.nextInt(25)+2,108,rand.nextInt(25)+2));
+            p.teleport(new Location(lotList.get(lotNumber),rand.nextInt(25)+5,108,rand.nextInt(25)+5));
+            bb.removePlayer(p);
+            thisBar.addPlayer(p);
         }
+        Bukkit.getScheduler().runTaskLater(self, new Runnable(){
+            int time = 20;
+            @Override
+            public void run(){
+                if(time > 0){
+                    thisBar.setTitle("Counting down: " + Integer.toString(time));
+                    Bukkit.getScheduler().runTaskLater(self, this,(long)(1000/50));
+                }else if (time == 0){
+                    thisBar.setTitle("Start!");
+                    Bukkit.getScheduler().runTaskLater(self, this,(long)(1000/50));
+                }else{
+                    thisBar.removeAll();
+                }
+                time -= 1;
+            }
+        }, (long)(1000/50));
     }   
 
     void endGame(int lotNumber){
-        clearLot(lotNumber);
+        System.out.println("game ended");
+        final int ln = lotNumber;
+        Bukkit.getScheduler().runTaskLater(self, new Runnable(){
+            @Override
+            public void run(){
+                Bukkit.unloadWorld(lotList.get(ln), false);
+                Bukkit.createWorld(worldCreators[ln]).setSpawnFlags(false, false);
+                synchronized(lotList){
+                    clearLot(ln);
+                }                   
+            }
+        }, (long)(1000/50));
     }   
 
     void clearLot(int lotNumber){
@@ -266,35 +322,35 @@ public class GameManager extends JavaPlugin implements Listener{
     }
 
     void buildLot(int lotNumber){
-        buildBlock(lotNumber*gameDimension,100,0,60,1,60,Material.OBSIDIAN);
-        buildWalls(lotNumber*gameDimension,101,0,60,1,60,Material.OBSIDIAN);
-        buildBlock(lotNumber*gameDimension+1,101,1,58,1,58,Material.LAVA);
+        buildBlock(lotList.get(lotNumber),0,100,0,60,1,60,Material.OBSIDIAN);
+        buildWalls(lotList.get(lotNumber),0,101,0,60,1,60,Material.OBSIDIAN);
+        buildBlock(lotList.get(lotNumber),1,101,1,58,1,58,Material.LAVA);
 
-        buildBlock(lotNumber*gameDimension,105,0,60,1,60,Material.SNOW_BLOCK);
-        scatteredColoredBlocks(new Location(gameWorld,lotNumber*gameDimension,105,0),60,30);
-        buildWalls(lotNumber*gameDimension,106,0,60,2,60,Material.IRON_FENCE);
+        buildBlock(lotList.get(lotNumber),0,105,0,60,1,60,Material.SNOW_BLOCK);
+        scatteredColoredBlocks(new Location(lotList.get(lotNumber),0,105,0),60,30);
+        buildWalls(lotList.get(lotNumber),0,106,0,60,2,60,Material.IRON_FENCE);
     }
 
-    void buildWalls(int posX,int posY,int posZ,int lX,int lY,int lZ, Material m){
+    void buildWalls(World world,int posX,int posY,int posZ,int lX,int lY,int lZ, Material m){
         for(int x = posX; x <= posX + lX; x++){
             for(int y = posY; y < posY + lY; y++){
-                gameWorld.getBlockAt(x,y,posZ).setType(m);    
-                gameWorld.getBlockAt(x,y,posZ+lZ).setType(m);    
+                world.getBlockAt(x,y,posZ).setType(m);    
+                world.getBlockAt(x,y,posZ+lZ).setType(m);    
             }
         }
         for(int z = posZ; z <= posZ + lZ; z++){
             for(int y = posY; y < posY + lY; y++){
-                gameWorld.getBlockAt(posX,y,z).setType(m);    
-                gameWorld.getBlockAt(posX+lX,y,z).setType(m);    
+                world.getBlockAt(posX,y,z).setType(m);    
+                world.getBlockAt(posX+lX,y,z).setType(m);    
             }
         }
     }
 
-    void buildBlock(int posX,int posY,int posZ,int lX,int lY,int lZ, Material m){
+    void buildBlock(World world,int posX,int posY,int posZ,int lX,int lY,int lZ, Material m){
         for(int x = posX; x <= posX + lX; x++){
             for(int y = posY; y < posY + lY; y++){
                 for(int z = posZ; z <= posZ + lZ; z++){
-                    gameWorld.getBlockAt(x,y,z).setType(m);    
+                    world.getBlockAt(x,y,z).setType(m);    
                 }
             }
         }
@@ -313,34 +369,35 @@ public class GameManager extends JavaPlugin implements Listener{
     void buildWaitingRoom(int posX,int posY,int posZ,int lX,int lY,int lZ){
         for(int x = posX; x < posX + lX; x++){
             for(int y = posY; y < posY + lY; y++){
-                gameWorld.getBlockAt(x,y,posZ).setType(org.bukkit.Material.GLASS);    
-                gameWorld.getBlockAt(x,y,posZ+lZ).setType(org.bukkit.Material.GLASS);    
+                lobbyWorld.getBlockAt(x,y,posZ).setType(org.bukkit.Material.GLASS);    
+                lobbyWorld.getBlockAt(x,y,posZ+lZ).setType(org.bukkit.Material.GLASS);    
             }
         }
         for(int z = posZ; z < posZ + lZ; z++){
             for(int y = posY; y < posY + lY; y++){
-                gameWorld.getBlockAt(posX,y,z).setType(org.bukkit.Material.GLASS);    
-                gameWorld.getBlockAt(posX+lX,y,z).setType(org.bukkit.Material.GLASS);    
+                lobbyWorld.getBlockAt(posX,y,z).setType(org.bukkit.Material.GLASS);    
+                lobbyWorld.getBlockAt(posX+lX,y,z).setType(org.bukkit.Material.GLASS);    
             }
         }
         for(int x = posX; x < posX + lX; x++){
             for(int z = posZ; z < posZ + lZ; z++){
-                gameWorld.getBlockAt(x,posY,z).setType(org.bukkit.Material.GLASS);    
-                gameWorld.getBlockAt(x,posY+lY,z).setType(org.bukkit.Material.GLASS);    
+                lobbyWorld.getBlockAt(x,posY,z).setType(org.bukkit.Material.GLASS);    
+                lobbyWorld.getBlockAt(x,posY+lY,z).setType(org.bukkit.Material.GLASS);    
             }
         }
-        gameWorld.setSpawnLocation(posX+lX/2,posY+lY/2,posZ+lZ/2);
+        lobbyWorld.setSpawnLocation(posX+lX/2,posY+lY/2,posZ+lZ/2);
     }
 
     void removePlayer(Player p){
-        synchronized(playerList){
-            playerList.remove(p);
+        synchronized(waitingList){
+            waitingList.remove(p);
+            updateWaitingBar();
         }
     }
 
     void addPlayer(Player p){
-        synchronized(playerList){
-            playerList.add(p);
+        synchronized(waitingList){
+            waitingList.add(p);
             updateWaitingBar();
         }
     }
@@ -354,8 +411,8 @@ public class GameManager extends JavaPlugin implements Listener{
     }
 
     void addToWaitingList(Player p){
-        synchronized(playerList){
-            if(playerList.contains(p)){
+        synchronized(waitingList){
+            if(waitingList.contains(p)){
                 p.sendMessage(ChatColor.RED + "You have already been added. Please wait while we find you a game.");
             }else{
                 addPlayer(p);
@@ -365,9 +422,9 @@ public class GameManager extends JavaPlugin implements Listener{
     }
 
     void updateWaitingBar(){
-        bb.setProgress(playerList.size()/(float)playersPerLot);
+        bb.setProgress(waitingList.size()/(float)playersPerLot);
         String playerbar = "Next to play: ";
-        List<Player> pView = playerList.subList(0,Math.min(6,playerList.size()));
+        List<Player> pView = waitingList.subList(0,Math.min(6,waitingList.size()));
         if(pView.size() > 0){
             playerbar += pView.get(0).getName();
 
@@ -414,7 +471,7 @@ public class GameManager extends JavaPlugin implements Listener{
         Random rand = new Random();
         Block tBlock;
         for(int i = 0; i < amount; i++){
-            tBlock = gameWorld.getBlockAt(corner.clone().add(rand.nextInt(size-4)+2,0,rand.nextInt(size-4)+2));
+            tBlock = corner.getWorld().getBlockAt(corner.clone().add(rand.nextInt(size-4)+2,0,rand.nextInt(size-4)+2));
             if(rand.nextInt(2) == 0){
                 tBlock.setType(Material.WOOL);
                 setColor(tBlock,DyeColor.BLUE);
