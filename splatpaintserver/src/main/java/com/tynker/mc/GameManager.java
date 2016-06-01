@@ -9,8 +9,8 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerEggThrowEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
-import org.bukkit.event.entity.FoodLevelChangeEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
+//import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
@@ -28,318 +28,308 @@ import java.util.ArrayList;
 import java.util.List;
 import org.bukkit.Bukkit;
 import org.bukkit.WorldBorder;
-
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.scheduler.BukkitTask;
+import org.apache.commons.io.FileUtils;
+import java.io.File;
+import java.io.IOException;
 
 public class GameManager extends JavaPlugin implements Listener{
    
     private int gameTimer = 10;
-    private int playersPerLot = 2;
-    private List<Player> waitingList;
+    private int playersPerLot = 6;
+    private int minPlayersPerLot = 2;
+    private int worldNum = 3;
+    private int lobbyNum = 3; 
+    private int borderRadius = 20;
     private Boolean[] worldList;
-    private BossBar[] barList;
-    private BossBar lobbyBar;
+    private Boolean[] lobbyList;
+    private BossBar[] gameBarList;
+    private BossBar[] lobbyBarList;
+    private BukkitTask[] countDownList;
     private WorldCreator[] worldCreators;
-    private int borderSize = 40;
+    private org.bukkit.plugin.Plugin thisPlugin = this;
+    private File srcDir;
+    private File[] worldFolders;
 
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
+        File thisDir;
 
-        //games = new Game[3];
-        //BossBar thisBossBar;
-        //WorldCreator thisWorldCreator;
-        //for(int c = 0;c < games.length;c++){
-        //    thisBossBar = Bukkit.getServer().createBossBar("Counting down: 5.", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SOLID);
-        //    thisWorldCreator = new WorldCreator("world"+i);
-        //    Bukkit.createWorld(thisWorldCreator);
-        //    games[i] = new Game(thisBossBar, thisWorldCreator);
-        //}
+        //setting up lobby worlds
+        lobbyList = new Boolean[lobbyNum];
+        lobbyBarList = new BossBar[lobbyNum];
+        Arrays.fill(lobbyList, false);
+        Arrays.fill(lobbyBarList, Bukkit.getServer().createBossBar("", org.bukkit.boss.BarColor.PURPLE, org.bukkit.boss.BarStyle.SEGMENTED_6));
+        countDownList = new BukkitTask[lobbyNum];
+        //World world;
+        try{
+            srcDir = new File("lobby_t");
+            for(int i = 0;i<lobbyNum;i++){
+                thisDir = new File("lobby"+i);
+                if(thisDir.exists() && thisDir.isDirectory())FileUtils.deleteDirectory(thisDir);
+                FileUtils.copyDirectory(srcDir, thisDir);
+                Bukkit.createWorld(new WorldCreator("lobby"+i)).setSpawnFlags(false,false);
+                //lobbyBarList[i] = Bukkit.getServer().createBossBar("", org.bukkit.boss.BarColor.PURPLE, org.bukkit.boss.BarStyle.SEGMENTED_6);
+            }
+        } catch(IOException e){
+        }
 
-        //setting up lobby wrold
-        World world = Bukkit.getWorld("world");
-        world.setSpawnFlags(false,false);
-        world.setPVP(false);
-        buildRoom(24, world.getBlockAt(0,125,0).getLocation());
-
-        //setting up world list
-        worldList = new Boolean[3];
+        //setting up game worlds
+        worldList = new Boolean[worldNum];
         Arrays.fill(worldList, false);
-        worldCreators = new WorldCreator[worldList.length];
-
-        //setting up lobby promo message
-        lobbyBar = Bukkit.getServer().createBossBar("Please wait for game to start. Waiting for " + playersPerLot + "  more players.", org.bukkit.boss.BarColor.PURPLE, org.bukkit.boss.BarStyle.SEGMENTED_6);
-        lobbyBar.setProgress(0.0);
-
-        //setting up game message bar
-        barList = new BossBar[worldList.length];
-
-        //initializing everything
-        waitingList = new ArrayList<Player>();
-        WorldBorder thisWorldBorder;
-        //World thisWorld;
-        for(int i = 0;i < worldList.length;i++){
-            worldCreators[i] = new WorldCreator("world"+i).type(org.bukkit.WorldType.FLAT).generateStructures(false).seed(0);//.generatorSettings("{\"seaLevel\":0}");
-            //thisWorld = Bukkit.createWorld(worldCreators[i]);
-            thisWorldBorder = Bukkit.createWorld(worldCreators[i]).getWorldBorder();
-            thisWorldBorder.setCenter(0,0);
-            thisWorldBorder.setSize(borderSize);
-            Bukkit.unloadWorld("world"+i,true);
-            Bukkit.createWorld(worldCreators[i]).setSpawnFlags(false, false);
-            barList[i] = Bukkit.getServer().createBossBar("Get Ready!", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SOLID);
+        gameBarList = new BossBar[worldNum];
+        Arrays.fill(gameBarList, Bukkit.getServer().createBossBar("", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SOLID));
+        worldFolders = new File[worldNum];
+        worldCreators = new WorldCreator[worldNum];
+        //World tempWorld = Bukkit.createWorld(new WorldCreator("world_t"));
+        //WorldBorder tempWorldBorder = tempWorld.getWorldBorder();
+        //tempWorldBorder.setCenter(0,0);
+        //tempWorldBorder.setSize(borderRadius*2);
+        //Bukkit.unloadWorld(tempWorld, true);  
+        try{
+            srcDir = new File("world_t");
+            for(int i = 0;i < worldNum;i++){
+                thisDir = new File("world"+i);
+                //worldFolders[i] = thisDir;
+                if(thisDir.exists() && thisDir.isDirectory())FileUtils.deleteDirectory(thisDir);
+                FileUtils.copyDirectory(srcDir, thisDir);
+                worldCreators[i] = new WorldCreator("world"+i);
+                Bukkit.createWorld(worldCreators[i]).setSpawnFlags(false,false);
+                //gameBarList[i] = Bukkit.getServer().createBossBar("", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SOLID);
+            }
+        } catch(IOException e){
         }
 
-        //setting up interval for launching game
-        final org.bukkit.plugin.Plugin thisPlugin = this;
-        Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
-            @Override
-            public void run(){
-
-                world.setTime(0);
-                world.setStorm(false);
-                world.setThundering(false);
-
-                if(waitingList.size() >= playersPerLot){
-                    int lotNumber = getFreeLot();
-
-                    if(lotNumber >= 0){
-                        World targetWorld;
-                        Player player;
-                        BossBar thisBar;
-
-                        lobbyBar.removeAll();
-
-                        while(waitingList.size() >= playersPerLot && lotNumber >= 0){
-                            synchronized(worldList){
-                                worldList[lotNumber] = true;
-                            }
-                            targetWorld = Bukkit.getWorld("world"+lotNumber);
-                            targetWorld.setTime(0);
-                            thisBar = barList[lotNumber];
-
-                            System.out.println("launching game in "+ lotNumber + " " + targetWorld);
-
-                            synchronized(waitingList){
-                                for(int c = 0;c < playersPerLot;c++){
-                                    player = waitingList.remove(0);
-                                    player.setCustomName("gaming");
-                                    player.teleport(targetWorld.getHighestBlockAt(0,0).getLocation());
-                                    thisBar.addPlayer(player);
-                                }
-                            }
-
-                            launchGame(lotNumber);
-                            lotNumber = getFreeLot();
-                        }
-
-                        synchronized(waitingList){
-                            lobbyBar.setProgress((double)waitingList.size()/playersPerLot);
-
-                            waitingList.forEach(leftover->{
-                                lobbyBar.addPlayer(leftover);
-                            });
-                        }
-                    }
-                }
-
-            Bukkit.getScheduler().runTaskLater(thisPlugin, this, (long)(1000 /50));
-            }
-
-        }, (long)(1000 / 50)); 
     }
-
-    public void buildRoom(int d, Location location){
-        World world = location.getWorld();
-        Block block = world.getBlockAt(location.clone().add(Math.round(-d/2),0,Math.round(-d/2)));
-        int x,y,z;
-
-        world.getEntitiesByClass(org.bukkit.entity.EnderCrystal.class).forEach(entity->entity.remove());
-        world.spawnEntity(location.add(0,2,0),org.bukkit.entity.EntityType.ENDER_CRYSTAL);
-
-        for (x = 0; x < d; x++) {
-            for (z = 0; z < d; z++) {
-                block.getRelative(x, 0, z).setType(org.bukkit.Material.GLASS);
-            }
-        }
-
-        for (x = -1; x < d+1; x++) {
-            for (y = 1; y < 3; y++) {
-                block.getRelative(x, y, -1).setType(org.bukkit.Material.THIN_GLASS);
-                block.getRelative(x, y, d).setType(org.bukkit.Material.THIN_GLASS);
-            }
-        }   
-
-        for (z = 0; z < d; z++) {
-            for (y = 1; y < 3; y++) {
-                block.getRelative(-1, y, z).setType(org.bukkit.Material.IRON_FENCE);
-                block.getRelative(d, y, z).setType(org.bukkit.Material.IRON_FENCE);
-            }
-        }
-    }
-
 
     @Override
     public void onDisable() {
         getServer().getScheduler().cancelTasks(this);
     }
 
-    public void launchGame(int lotNumber){
-        final int thisLotNumber = lotNumber;
-        final org.bukkit.plugin.Plugin thisPlugin = this;
-        final BossBar thisBar = barList[lotNumber];
-
-        Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
+    public void launchGame(int lobbyNumber, int worldNumber){
+        final int thisWorldNumber = worldNumber;
+        final World thisWorld = Bukkit.getWorld("world"+worldNumber);
+        final List<Player> players = Bukkit.getWorld("lobby"+lobbyNumber).getPlayers();
+        final BossBar thisBar = gameBarList[worldNumber];
+        lobbyBarList[lobbyNumber].removeAll(); 
+        
+        //send players to game world
+        players.forEach(player->{
+            player.setCustomName("gaming");
+            player.teleport(thisWorld.getHighestBlockAt(0,0).getLocation());
+            thisBar.addPlayer(player); 
+        });
+     
+        Bukkit.getScheduler().runTaskLater(this, new Runnable(){
+            BukkitTask thisInterval = null;
             @Override
             public void run(){
-                thisBar.setTitle("Counting down: 5.");
-                Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
+
+                //schedule game to start after 2nd counter   
+                thisInterval = Bukkit.getScheduler().runTaskTimer(thisPlugin, new Runnable(){
+                    int counter = 5;
+                    Boolean temp = true;
                     @Override
                     public void run(){
-                        thisBar.setTitle("Counting down: 4.");
-                        Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
-                            @Override
-                            public void run(){
-                                thisBar.setTitle("Counting down: 3.");
-                                Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
-                                    @Override
-                                    public void run(){
-                                        thisBar.setTitle("Counting down: 2.");
-                                        Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
-                                            @Override
-                                            public void run(){
-                                                thisBar.setTitle("Counting down: 1.");
-                                                Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
-                                                    @Override
-                                                    public void run(){
-                                                        thisBar.setTitle("Start!");
-                                                        Boolean temp = true;
+                        if(counter == 0){
+                            thisInterval.cancel();
+                            thisBar.setTitle("Start!");
 
-                                                        for(Player player: Bukkit.getWorld("world"+thisLotNumber).getPlayers()){
-                                                            player.setHealth(player.getMaxHealth());
-                                                            player.getInventory().addItem(new org.bukkit.inventory.ItemStack((temp)?org.bukkit.Material.EGG:org.bukkit.Material.SNOW_BALL)); 
-                                                            player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_SWORD)); 
-                                                            temp = !temp;
-                                                        }
+                            //set up each player
+                            players.forEach(player->{
+                                player.getInventory().addItem(new org.bukkit.inventory.ItemStack((temp)?org.bukkit.Material.EGG:org.bukkit.Material.SNOW_BALL)); 
+                                player.getInventory().addItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.IRON_SWORD)); 
+                                temp = !temp;
+                            });     
 
-                                                        Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
-                                                            @Override
-                                                            public void run(){
-                                                                //thisBar.setTitle("Game Over");
-                                                                endGame(thisLotNumber);
-                                                            }
-                                                        }, (long)(gameTimer*1000/50));
-                                                    }
-                                                },(long)(1000 / 50));
-                                            }
-                                        }, (long)(1000/50));
-                                    }
-                                }, (long)(1000/50));
-                            }
-                        }, (long)(1000/50));
+                            //game ends on timer.
+                            Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
+                                @Override
+                                public void run(){
+                                    endGame(thisWorldNumber);
+                                }
+                            }, (long)(gameTimer*20));
+                        } else {
+                            thisBar.setTitle("Get ready! " + counter + ".");
+                            counter--;
+                        }
                     }
-                }, (long)(1000/50));
+                },0,20);
             }
-        }, (long)(10000/50));
-    }   
+        },0);
+    }
 
-    //@EventHandler
-    //public void PlayerCommand(PlayerCommandPreprocessEvent event) {
-    //        if(event.getMessage().equals("/buy")){
-    //        event.getPlayer().teleport(Bukkit.getWorld("world").getBlockAt(0,200,0).getLocation());
-    //        Bukkit.unloadWorld("new_world", false);
-    //        WorldCreator nw = new WorldCreator("new_world").environment(Environment.NORMAL).generateStructures(false).seed(0);//.generator(new WorldChunkGenerator());
-    //        Bukkit.createWorld(nw);
-    //        event.getPlayer().teleport(Bukkit.getWorld("new_world").getBlockAt(0,200,0).getLocation());
-    //    }
-    //}
-
-    public void endGame(int lotNumber){
-        final int thisLotNumber = lotNumber;
-        final World thisWorld = Bukkit.getWorld("world"+lotNumber);
+    public void endGame(int worldNumber){
+        final int thisWorldNumber = worldNumber;
+        final World thisWorld = Bukkit.getWorld("world"+worldNumber);
         final List<Player> players = thisWorld.getPlayers();        
-        final org.bukkit.plugin.Plugin thisPlugin = this;
-
+        
+        //stop game for all players and calsulate scores.
         players.forEach(player->player.setCustomName(null));
-        calculateScore(lotNumber);
+        calculateScore(worldNumber, 0, 10);
 
+        //sets a delay for teleporting players back to hub world
         Bukkit.getScheduler().runTaskLater(this, new Runnable(){
             @Override
             public void run(){
-                BossBar thisBar = barList[lotNumber];
-                thisBar.removeAll();
-                thisBar.setTitle("Get Ready!");
+                gameBarList[worldNumber].removeAll();
 
                 players.forEach(player->{
                     player.getInventory().clear();
                     player.setHealth(player.getMaxHealth());
-                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                    player.teleport(Bukkit.getWorld("world").getBlockAt(0,126,-5).getLocation());
-                });
+                    //player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                    player.setGameMode(org.bukkit.GameMode.SPECTATOR);
+                    player.teleport(Bukkit.getWorld("void").getSpawnLocation());
+                    
+                    //TO DO: TELEPORT BACK TO HUB WORLD!!!!
 
+                });
+                
+                //sets a delay for unloading and reloading the game world after all players teleported out
                 Bukkit.getScheduler().runTaskLater(thisPlugin, new Runnable(){
                     @Override
                     public void run(){
                         Bukkit.unloadWorld(thisWorld, false);
-                        Bukkit.createWorld(worldCreators[thisLotNumber]).setSpawnFlags(false, false);
-                        //Bukkit.createWorld(new WorldCreator("world"+thisLotNumber));
+                        File destDir = worldFolders[thisWorldNumber];
+                        try{
+                            FileUtils.deleteDirectory(destDir);
+                            FileUtils.copyDirectory(srcDir, destDir);
+                        } catch(IOException e){
+                        }
+                        Bukkit.createWorld(worldCreators[thisWorldNumber]).setSpawnFlags(false, false);
                         synchronized(worldList){
-                            worldList[thisLotNumber] = false;
+                            worldList[thisWorldNumber] = false;
                         }                   
                     }
-                }, (long)(1000/50));
+                }, (long)(60));
+            
             }
-        }, (long)(10000/50));
+        }, (long)(200));
     }
 
-    public int getFreeLot(){
+    @EventHandler
+    public void PlayerCommand(PlayerCommandPreprocessEvent event) {
+        switch(event.getMessage()){
+            //case "/setppl1":
+            //    playersPerLot = 1;
+            //    break;
+            //case "/setppl2":
+            //    playersPerLot = 2;
+            //    break;
+            default:
+                break;
+        }
+    }
+
+    //prevent players from moving out of world border even in spectator mode
+    //@EventHandler
+    //public void PlayerMove(PlayerMoveEvent event) {
+    //    Location to = event.getTo();
+    //    if("gaming".equals(event.getPlayer().getCustomName()) && (Math.abs(to.getX()) > borderRadius || Math.abs(to.getZ()) > borderRadius))event.setCancelled(true);
+    //}
+
+    public int getFreeSlot(Boolean[] ary){
         int i;
 
-        synchronized(worldList){
-            for(i = 0; i < worldList.length; i++){
-                if(worldList[i] == false){
-                    return i;
-                } 
-            }
+        for(i = 0; i < ary.length; i++){
+            if(ary[i] == false){
+                return i;
+            } 
         }
 
         return -1;
     }
 
+    
     @EventHandler
     public void PlayerJoin(PlayerJoinEvent event) {
 	    Player player = event.getPlayer();
-        player.setCustomName(null);
+        player.setGameMode(org.bukkit.GameMode.SPECTATOR);
         player.getInventory().clear();
         player.setHealth(player.getMaxHealth());
-        player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-        player.teleport(Bukkit.getWorld("world").getBlockAt(0,126,-5).getLocation());
+        player.setCustomName(null);
+        int lobbyNumber, playerSize;
+        //double ratio;
+        //World targetWorld;
+        //BossBar lobbyBar;
+        synchronized(lobbyList){
+            lobbyNumber = getFreeSlot(lobbyList);
+            if(lobbyNumber < 0){
+                player.kickPlayer("haha.");
+            } else {
+                World targetWorld = Bukkit.getWorld("lobby"+lobbyNumber);
+                BossBar lobbyBar = lobbyBarList[lobbyNumber];
+                
+                //adding player to targeted game world
+                lobbyBar.addPlayer(player);
+                player.setLevel(lobbyNumber);
+                playerSize = targetWorld.getPlayers().size()+1;
+                player.teleport(targetWorld.getBlockAt(7,45,-10).getLocation());
+                player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+
+                //initialize lobby world if player is first to join 
+                if(playerSize == 1){
+                    countDownList[lobbyNumber] = Bukkit.getScheduler().runTaskTimer(this, new Runnable(){
+                    int counter = 10;
+                    int worldNumber, playerSize;
+                        @Override
+                        public void run(){
+                            if(counter > 0){
+                                playerSize = targetWorld.getPlayers().size();
+                                lobbyBar.setProgress((double)playerSize/playersPerLot);
+                                if(playerSize < playersPerLot){
+                                    synchronized(lobbyList){
+                                        lobbyList[lobbyNumber] = false;
+                                    }
+                                } else {
+                                    synchronized(lobbyList){
+                                        lobbyList[lobbyNumber] = true;
+                                    }
+                                } 
+                                if(playerSize < minPlayersPerLot){
+
+                                    //stop count down & reset counter if # of players drops below minPlayersPerLot
+                                    lobbyBar.setTitle("Waiting for " + (minPlayersPerLot - playerSize) + " more player(s) to start the game");
+                                    counter = 10;
+                                } else {
+
+                                    //start count down if # of players reach minPlayersPerLot
+                                    lobbyBar.setTitle("Game will start in " + counter + " seconds.");
+                                    counter--;
+                                }
+                            } else {
+                                
+                                //attempt to join free game world when counter reaches zero
+                                synchronized(worldList){
+                                    worldNumber = getFreeSlot(worldList);
+                                    if(worldNumber >= 0){
+                                        countDownList[lobbyNumber].cancel();
+                                        worldList[worldNumber] = true;
+                                        launchGame(lobbyNumber, worldNumber);
+                                    }
+                                }
+                            }
+                        }
+                    }, 0, 20);
+                }
+            }
+        }
     }
 
-    @EventHandler
-    public void FoodLevelChange(FoodLevelChangeEvent event) {
-        event.setCancelled(true);
-    }
+    //@EventHandler
+    //public void FoodLevelChange(FoodLevelChangeEvent event) {
+    //    event.setCancelled(true);
+    //}
 
     @EventHandler
     public void PlayerDeath(PlayerDeathEvent event) {
-        event.setKeepInventory(true);
         Player player = event.getEntity();
         player.setHealth(1.0);
         player.setGameMode(org.bukkit.GameMode.SPECTATOR);
         player.teleport(player.getLocation().add(0,10,0));
-    }
-
-    @EventHandler
-    public void PlayerQuit(PlayerQuitEvent event) {
-	    Player player = event.getPlayer();
-        System.out.println("waiting : " + waitingList);
-
-        if("waiting".equals(player.getCustomName())){
-            synchronized(waitingList){
-                waitingList.remove(player);
-            }
-        }
-
-        System.out.println("waiting : " + waitingList);
     }
 
     @EventHandler
@@ -353,26 +343,10 @@ public class GameManager extends JavaPlugin implements Listener{
     }
 
     @EventHandler
-    public void EntityDamageEntity(EntityDamageByEntityEvent event) {
-        if(event.getEntity() instanceof org.bukkit.entity.EnderCrystal){
-		    Player player = (Player)event.getDamager();
-            if(player.getCustomName() == null){
-                player.setCustomName("waiting");
-                int size;
-                synchronized(waitingList){
-                    waitingList.add(player);
-                    size = waitingList.size();
-                    if(size <= playersPerLot){
-                        lobbyBar.addPlayer(player);
-                        lobbyBar.setProgress((double)size/playersPerLot);    
-                        player.sendMessage(org.bukkit.ChatColor.AQUA + "You have joined the game. ");
-                        lobbyBar.setTitle("Please wait for game to start. Waiting for " + (playersPerLot - size) + " more player(s).");    
-                    } else player.sendMessage(org.bukkit.ChatColor.AQUA + "You have joined the line. " + size + ((size>1)?" persons are":" person is") +  " currently waiting.");
-                }
-            } else {
-                player.sendMessage(org.bukkit.ChatColor.RED + "You are already in line.");
-            }
-
+    public void EntityDamage(EntityDamageEvent event) {
+        Entity entity = event.getEntity(); 
+        if(entity.getCustomName() == null){
+            if(event.getCause() == org.bukkit.event.entity.EntityDamageEvent.DamageCause.VOID) entity.teleport(entity.getWorld().getBlockAt(7,45,-10).getLocation());
             event.setCancelled(true);
         }
     }
@@ -413,16 +387,14 @@ public class GameManager extends JavaPlugin implements Listener{
         }
     }
     
-    public void calculateScore(int lotNumber){
-        World world = Bukkit.getWorld("world"+lotNumber);
-        int halfBorder = borderSize/2;
-        int seaLevel = world.getSeaLevel();
+    public void calculateScore(int worldNumber, int low, int high){
+        World world = Bukkit.getWorld("world"+worldNumber);
         Block block;
         int redScore = 0;
         int blueScore = 0;
-        for(int x = -halfBorder;x < halfBorder;x++){
-            for(int z = -halfBorder;z < halfBorder;z++){
-                for(int y = 0;y < 10;y++){
+        for(int x = -borderRadius;x < borderRadius;x++){
+            for(int z = -borderRadius;z < borderRadius;z++){
+                for(int y = low;y < high;y++){
                     block = world.getBlockAt(x,y,z);
                     if(block.getType() == org.bukkit.Material.WOOL){
                         org.bukkit.DyeColor color = ((org.bukkit.material.Wool)block.getState().getData()).getColor();
@@ -443,6 +415,6 @@ public class GameManager extends JavaPlugin implements Listener{
         } else {
             endMessage = endMessage + "Blue Team Won.";
         }
-        barList[lotNumber].setTitle(endMessage);    
+        gameBarList[worldNumber].setTitle(endMessage);    
     }
 }
